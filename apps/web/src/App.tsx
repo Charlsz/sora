@@ -9,6 +9,7 @@ import {
   type Workflow,
 } from "./api";
 import ApprovalCard from "./components/ApprovalCard";
+import ComputerPanel from "./components/ComputerPanel";
 import ContextCards from "./components/ContextCards";
 import LoadingState from "./components/LoadingState";
 import PromptBar from "./components/PromptBar";
@@ -481,10 +482,11 @@ export function App() {
         )}
       </main>
 
-      <aside className="hidden w-80 shrink-0 flex-col border-l border-line bg-panel/70 p-4 lg:flex">
+      <aside className="hidden w-80 shrink-0 flex-col gap-6 border-l border-line bg-panel/70 p-4 lg:flex">
+        <ComputerPanel agentSlug={selected} />
         <ContextCards chunks={contextChunks} />
         {active?.workspace && (
-          <p className="mt-4 font-mono text-[11px] break-all text-ink-3">
+          <p className="font-mono text-[11px] break-all text-ink-3">
             {active.workspace}
           </p>
         )}

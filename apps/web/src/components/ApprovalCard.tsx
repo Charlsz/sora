@@ -6,12 +6,16 @@ type ApprovalCardProps = {
   onRespond: (decision: "allow" | "deny") => void | Promise<void>;
 };
 
-const ACTION_LABELS: Record<string, string> = {
+    const ACTION_LABELS: Record<string, string> = {
   "fs.write": "Write file",
   "fs.delete": "Delete file",
   "terminal.exec": "Run terminal command",
   "http.request": "Make HTTP request",
   "browser.navigate": "Navigate browser",
+  "browser.click": "Click in browser",
+  "browser.type": "Type in browser",
+  "browser.screenshot": "Browser screenshot",
+  "browser.close": "Close browser",
   "agent.delegate": "Delegate to another agent",
 };
 

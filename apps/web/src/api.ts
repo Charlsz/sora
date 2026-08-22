@@ -59,6 +59,20 @@ export type ProviderInfo = {
   hint: string | null;
 };
 
+export type ComputerInfo = {
+  agentSlug: string;
+  workspaceRoot: string;
+  kind: string;
+  browser: {
+    backend: string;
+    open: boolean;
+    url: string;
+    title: string;
+    profileDir?: string;
+    headed: boolean;
+  };
+};
+
 export type SoraEvent = {
   id: string;
   type: string;
@@ -158,6 +172,24 @@ export const soraApi = {
     api<{ defaultModel: string }>("/api/config", {
       method: "PUT",
       body: JSON.stringify(body),
+    }),
+  computer: (slug: string) =>
+    api<ComputerInfo>(`/api/agents/${slug}/computer`),
+  browserNavigate: (slug: string, url: string) =>
+    api<{ ok: boolean; url: string; title: string; message: string }>(
+      `/api/agents/${slug}/computer/browser/navigate`,
+      { method: "POST", body: JSON.stringify({ url }) },
+    ),
+  browserScreenshot: (slug: string) =>
+    api<{
+      ok: boolean;
+      message: string;
+      base64?: string;
+      width: number;
+      height: number;
+    }>(`/api/agents/${slug}/computer/browser/screenshot`, {
+      method: "POST",
+      body: "{}",
     }),
 };
 
