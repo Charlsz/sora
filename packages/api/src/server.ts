@@ -148,6 +148,64 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
           );
         }
 
+        const computerMatch = /^\/api\/agents\/([^/]+)\/computer$/.exec(
+          url.pathname,
+        );
+        if (computerMatch && req.method === "GET") {
+          const slug = decodeURIComponent(computerMatch[1]!);
+          const agent = services.agents.requireBySlugOrName(slug);
+          const computer = services.runner.getComputer(agent);
+          return json(
+            {
+              agentSlug: agent.slug,
+              workspaceRoot: computer.workspaceRoot,
+              kind: computer.kind,
+              browser: computer.browser.status(),
+            },
+            cors,
+          );
+        }
+
+        const browserNav = /^\/api\/agents\/([^/]+)\/computer\/browser\/navigate$/.exec(
+          url.pathname,
+        );
+        if (browserNav && req.method === "POST") {
+          const slug = decodeURIComponent(browserNav[1]!);
+          const agent = services.agents.requireBySlugOrName(slug);
+          const body = (await req.json()) as { url?: string };
+          if (!body.url?.trim()) {
+            return json({ error: "url is required" }, cors, 400);
+          }
+          await services.permissions.assert({
+            agentId: agent.id,
+            agentSlug: agent.slug,
+            action: "browser.navigate",
+            resource: body.url,
+          });
+          const result = await services.runner
+            .getComputer(agent)
+            .browser.navigate(body.url);
+          return json(result, cors, result.ok ? 200 : 400);
+        }
+
+        const browserShot = /^\/api\/agents\/([^/]+)\/computer\/browser\/screenshot$/.exec(
+          url.pathname,
+        );
+        if (browserShot && req.method === "POST") {
+          const slug = decodeURIComponent(browserShot[1]!);
+          const agent = services.agents.requireBySlugOrName(slug);
+          await services.permissions.assert({
+            agentId: agent.id,
+            agentSlug: agent.slug,
+            action: "browser.screenshot",
+            resource: "viewport",
+          });
+          const result = await services.runner
+            .getComputer(agent)
+            .browser.screenshot({});
+          return json(result, cors, result.ok ? 200 : 400);
+        }
+
         if (url.pathname === "/api/config" && req.method === "GET") {
           return json(
             {
@@ -330,6 +388,7 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
       sseClients.clear();
       server.stop(true);
       services.workflowEngine.stopScheduler();
+      void services.runner.dispose();
       services.runtime.close();
     },
   };

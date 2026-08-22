@@ -192,3 +192,187 @@ export const terminalTool: Tool = {
     }
   },
 };
+
+export const browserNavigateTool: Tool = {
+  name: "browser_navigate",
+  description:
+    "Open a URL in the agent's local Chromium browser (persistent profile).",
+  inputSchema: {
+    type: "object",
+    properties: {
+      url: { type: "string", description: "Absolute http(s) URL" },
+    },
+    required: ["url"],
+  },
+  async execute(input: unknown, context: ToolContext): Promise<ToolResult> {
+    const data = (input ?? {}) as { url?: string };
+    if (!data.url?.trim()) {
+      return { ok: false, output: "", error: "url is required" };
+    }
+    try {
+      await requirePermission(context, "browser.navigate", data.url);
+      const result = await requireComputer(context).browser.navigate(data.url);
+      return {
+        ok: result.ok,
+        output: `${result.message}\ntitle: ${result.title}\nurl: ${result.url}`,
+        data: result,
+        error: result.ok ? undefined : result.message,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        output: "",
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  },
+};
+
+export const browserClickTool: Tool = {
+  name: "browser_click",
+  description: "Click an element in the agent's browser by CSS selector.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      selector: { type: "string" },
+    },
+    required: ["selector"],
+  },
+  async execute(input: unknown, context: ToolContext): Promise<ToolResult> {
+    const data = (input ?? {}) as { selector?: string };
+    if (!data.selector?.trim()) {
+      return { ok: false, output: "", error: "selector is required" };
+    }
+    try {
+      await requirePermission(context, "browser.click", data.selector);
+      const result = await requireComputer(context).browser.click(data.selector);
+      return {
+        ok: result.ok,
+        output: result.message,
+        data: result,
+        error: result.ok ? undefined : result.message,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        output: "",
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  },
+};
+
+export const browserTypeTool: Tool = {
+  name: "browser_type",
+  description: "Type text into an element in the agent's browser.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      selector: { type: "string" },
+      text: { type: "string" },
+      clear: {
+        type: "boolean",
+        description: "Clear the field before typing (default true)",
+      },
+    },
+    required: ["selector", "text"],
+  },
+  async execute(input: unknown, context: ToolContext): Promise<ToolResult> {
+    const data = (input ?? {}) as {
+      selector?: string;
+      text?: string;
+      clear?: boolean;
+    };
+    if (!data.selector?.trim() || data.text === undefined) {
+      return { ok: false, output: "", error: "selector and text are required" };
+    }
+    try {
+      await requirePermission(context, "browser.type", data.selector, {
+        textLength: data.text.length,
+      });
+      const result = await requireComputer(context).browser.type(
+        data.selector,
+        data.text,
+        { clear: data.clear },
+      );
+      return {
+        ok: result.ok,
+        output: result.message,
+        data: result,
+        error: result.ok ? undefined : result.message,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        output: "",
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  },
+};
+
+export const browserScreenshotTool: Tool = {
+  name: "browser_screenshot",
+  description:
+    "Capture the agent's browser viewport. Optionally save under the workspace.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      path: {
+        type: "string",
+        description: "Optional workspace-relative PNG path",
+      },
+      fullPage: { type: "boolean" },
+    },
+  },
+  async execute(input: unknown, context: ToolContext): Promise<ToolResult> {
+    const data = (input ?? {}) as { path?: string; fullPage?: boolean };
+    try {
+      await requirePermission(
+        context,
+        "browser.screenshot",
+        data.path ?? "viewport",
+      );
+      const result = await requireComputer(context).browser.screenshot({
+        path: data.path,
+        fullPage: data.fullPage,
+      });
+      return {
+        ok: result.ok,
+        output: result.message,
+        data: {
+          path: result.path,
+          width: result.width,
+          height: result.height,
+          hasImage: Boolean(result.base64),
+        },
+        error: result.ok ? undefined : result.message,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        output: "",
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  },
+};
+
+export const browserCloseTool: Tool = {
+  name: "browser_close",
+  description: "Close the agent's browser session (profile stays on disk).",
+  inputSchema: { type: "object", properties: {} },
+  async execute(_input: unknown, context: ToolContext): Promise<ToolResult> {
+    try {
+      await requirePermission(context, "browser.close", "*");
+      await requireComputer(context).browser.close();
+      return { ok: true, output: "Browser closed" };
+    } catch (error) {
+      return {
+        ok: false,
+        output: "",
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  },
+};

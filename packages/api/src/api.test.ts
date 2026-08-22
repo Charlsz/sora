@@ -157,4 +157,25 @@ describe("api providers", () => {
     expect(openai?.configured).toBe(true);
     expect(JSON.stringify(body)).not.toContain("sk-test-secret-value");
   });
+
+  test("computer status for agent", async () => {
+    process.env.SORA_BROWSER = "off";
+    const created = await fetch(`${server.url}/api/agents`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "BrowserBot" }),
+    });
+    expect(created.ok).toBe(true);
+    const agent = (await created.json()) as { slug: string };
+    const res = await fetch(
+      `${server.url}/api/agents/${agent.slug}/computer`,
+    );
+    expect(res.ok).toBe(true);
+    const body = (await res.json()) as {
+      browser: { backend: string };
+      workspaceRoot: string;
+    };
+    expect(body.workspaceRoot).toContain(agent.slug);
+    expect(["playwright", "placeholder"]).toContain(body.browser.backend);
+  });
 });

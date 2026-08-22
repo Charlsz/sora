@@ -1,5 +1,10 @@
 import { agentMessageTool, echoTool, httpRequestTool } from "./builtins.ts";
 import {
+  browserClickTool,
+  browserCloseTool,
+  browserNavigateTool,
+  browserScreenshotTool,
+  browserTypeTool,
   deleteFileTool,
   listDirTool,
   readFileTool,
@@ -22,11 +27,21 @@ export function createBuiltinToolRegistry(): ToolRegistry {
   registry.register(listDirTool);
   registry.register(deleteFileTool);
   registry.register(terminalTool);
+  registry.register(browserNavigateTool);
+  registry.register(browserClickTool);
+  registry.register(browserTypeTool);
+  registry.register(browserScreenshotTool);
+  registry.register(browserCloseTool);
   return registry;
 }
 
 export { agentMessageTool, echoTool, httpRequestTool } from "./builtins.ts";
 export {
+  browserClickTool,
+  browserCloseTool,
+  browserNavigateTool,
+  browserScreenshotTool,
+  browserTypeTool,
   deleteFileTool,
   listDirTool,
   readFileTool,

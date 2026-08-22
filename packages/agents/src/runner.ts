@@ -1,5 +1,5 @@
 import type { EventBus, SoraPaths } from "@sora/core";
-import { LocalComputer } from "@sora/computer";
+import { ComputerRegistry, LocalComputer } from "@sora/computer";
 import type { ConversationStore, MemoryStore } from "@sora/memory";
 import type {
   ChatMessage,
@@ -13,6 +13,7 @@ import {
   type SkillRegistry,
 } from "@sora/skills";
 import type { Tool, ToolRegistry } from "@sora/tools";
+import { join } from "node:path";
 import type { DelegationService } from "./delegation.ts";
 import type { AgentStore } from "./store.ts";
 import type { Agent } from "./types.ts";
@@ -39,6 +40,8 @@ export class AgentRunner {
   #skills: SkillRegistry | null = null;
   /** Nested run refcounts per agent id (delegation-safe status). */
   #activeRuns = new Map<string, number>();
+  /** Long-lived per-agent computers (browser profiles stay warm). */
+  readonly computers = new ComputerRegistry();
 
   constructor(
     private readonly agents: AgentStore,
@@ -57,6 +60,27 @@ export class AgentRunner {
 
   setSkills(skills: SkillRegistry): void {
     this.#skills = skills;
+  }
+
+  /** Reuse the same LocalComputer (and browser session) for an agent. */
+  getComputer(agent: Agent): LocalComputer {
+    const id = `agent:${agent.slug}`;
+    return this.computers.getOrCreate(id, () => {
+      const workspacePath = this.paths.agent(agent.slug).workspace;
+      const profileDir = join(
+        this.paths.agent(agent.slug).root,
+        "browser-profile",
+      );
+      return new LocalComputer({
+        id,
+        workspaceRoot: workspacePath,
+        browserProfileDir: profileDir,
+      });
+    }) as LocalComputer;
+  }
+
+  async dispose(): Promise<void> {
+    await this.computers.disposeAll();
   }
 
   async run(input: RunAgentInput): Promise<RunAgentResult> {
@@ -446,10 +470,7 @@ export class AgentRunner {
     }
 
     const workspacePath = this.paths.agent(agent.slug).workspace;
-    const computer = new LocalComputer({
-      id: `agent:${agent.slug}`,
-      workspaceRoot: workspacePath,
-    });
+    const computer = this.getComputer(agent);
 
     return tool.execute(input, {
       agentId: agent.id,
