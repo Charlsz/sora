@@ -78,6 +78,13 @@
         "@sora/permissions": "workspace:*",
       },
     },
+    "packages/workflows": {
+      "name": "@sora/workflows",
+      "version": "0.1.0",
+      "dependencies": {
+        "@sora/core": "workspace:*",
+      },
+    },
   },
   "packages": {
     "@sora/agents": ["@sora/agents@workspace:packages/agents"],
@@ -99,6 +106,8 @@
     "@sora/skills": ["@sora/skills@workspace:packages/skills"],
 
     "@sora/tools": ["@sora/tools@workspace:packages/tools"],
+
+    "@sora/workflows": ["@sora/workflows@workspace:packages/workflows"],
 
     "@types/bun": ["@types/bun@1.4.0", "", { "dependencies": { "bun-types": "1.4.0" } }, "sha512-K+lZULY23vRgK/CfTjFIV+tyifaNdSMlPh9j+6mQ/cLfpOznLyAuzgV/JQysyECpkBQLVMSyvjlr2fBUSA9wFQ=="],
 

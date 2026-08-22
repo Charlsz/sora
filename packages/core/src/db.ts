@@ -76,16 +76,51 @@ function migrate(db: Database): void {
       created_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS workflows (
+      id TEXT PRIMARY KEY,
+      slug TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      agent_slug TEXT NOT NULL,
+      skill TEXT,
+      task TEXT NOT NULL,
+      trigger_json TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      last_run_at TEXT,
+      next_run_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS workflow_runs (
+      id TEXT PRIMARY KEY,
+      workflow_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      trigger_type TEXT NOT NULL,
+      trigger_payload_json TEXT,
+      reply TEXT,
+      error TEXT,
+      conversation_id TEXT,
+      started_at TEXT NOT NULL,
+      finished_at TEXT,
+      FOREIGN KEY (workflow_id) REFERENCES workflows(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_messages_conversation
       ON messages(conversation_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_memories_agent
       ON memories(agent_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_events_type
       ON events(type, created_at);
+    CREATE INDEX IF NOT EXISTS idx_workflows_enabled
+      ON workflows(enabled, next_run_at);
+    CREATE INDEX IF NOT EXISTS idx_workflow_runs_workflow
+      ON workflow_runs(workflow_id, started_at);
   `);
 
   db.query(
-    `INSERT INTO meta (key, value) VALUES ('schema_version', '1')
-     ON CONFLICT(key) DO NOTHING`,
+    `INSERT INTO meta (key, value) VALUES ('schema_version', '2')
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value
+     WHERE CAST(meta.value AS INTEGER) < 2`,
   ).run();
 }

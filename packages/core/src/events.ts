@@ -12,6 +12,10 @@ export type SoraEventType =
   | "agent.tool.failed"
   | "agent.delegated"
   | "workflow.started"
+  | "workflow.triggered"
+  | "workflow.step.started"
+  | "workflow.step.completed"
+  | "workflow.failed"
   | "workflow.completed"
   | "permission.requested"
   | "log";
