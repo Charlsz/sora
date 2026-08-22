@@ -8,6 +8,7 @@ import type {
 } from "@sora/models";
 import type { PermissionGate } from "@sora/permissions";
 import type { Tool, ToolRegistry } from "@sora/tools";
+import type { DelegationService } from "./delegation.ts";
 import type { AgentStore } from "./store.ts";
 import type { Agent } from "./types.ts";
 
@@ -26,6 +27,8 @@ export type RunAgentResult = {
 };
 
 export class AgentRunner {
+  #delegation: DelegationService | null = null;
+
   constructor(
     private readonly agents: AgentStore,
     private readonly providers: ProviderRegistry,
@@ -36,6 +39,10 @@ export class AgentRunner {
     private readonly events: EventBus,
     private readonly permissions: PermissionGate,
   ) {}
+
+  setDelegation(delegation: DelegationService): void {
+    this.#delegation = delegation;
+  }
 
   async run(input: RunAgentInput): Promise<RunAgentResult> {
     const agent = this.agents.requireBySlugOrName(input.agent);
@@ -276,6 +283,7 @@ export class AgentRunner {
       workspacePath,
       computer,
       permissions: this.permissions,
+      delegation: this.#delegation ?? undefined,
     });
   }
 }

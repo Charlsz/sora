@@ -53,7 +53,7 @@ The `openai-compatible` transport covers OpenAI, OpenRouter, Ollama (OpenAI mode
 
 1. Runtime + agents + models + tools + memory + CLI — done
 2. LocalComputer + permissions + workspace isolation — done
-3. Delegation + agent messaging + routing
+3. Delegation + agent messaging + routing — done
 4. Skills
 5. Workflows
 6. UI
@@ -81,3 +81,7 @@ Phase 1 embeds the runtime in the CLI process. A long-lived daemon/API arrives w
 ### Workspace-scoped LocalComputer
 
 Agents never receive a host-root filesystem handle. `LocalFilesystem.resolveSafe` rejects path traversal. Privileged actions go through `PermissionGate` (`allow` / `deny` / `ask`). CLI `--yes` or `SORA_AUTO_APPROVE=1` auto-approves ask decisions for local development.
+
+### Capability-based routing
+
+`AgentRouter` scores agents from descriptions/capabilities and optional `prefer` hints. There is no `if (task === "coding") useDev()` branch. Delegation depth is capped to prevent loops.

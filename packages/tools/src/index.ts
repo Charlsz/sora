@@ -6,6 +6,7 @@ import {
   terminalTool,
   writeFileTool,
 } from "./computer-tools.ts";
+import { delegateTaskTool } from "./delegation-tools.ts";
 import { ToolRegistry } from "./types.ts";
 
 export function createBuiltinToolRegistry(): ToolRegistry {
@@ -13,6 +14,7 @@ export function createBuiltinToolRegistry(): ToolRegistry {
   registry.register(echoTool);
   registry.register(httpRequestTool);
   registry.register(agentMessageTool);
+  registry.register(delegateTaskTool);
   registry.register(readFileTool);
   registry.register(writeFileTool);
   registry.register(listDirTool);
@@ -29,6 +31,7 @@ export {
   terminalTool,
   writeFileTool,
 } from "./computer-tools.ts";
+export { delegateTaskTool } from "./delegation-tools.ts";
 export {
   ToolRegistry,
   type Tool,

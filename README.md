@@ -54,4 +54,4 @@ See [docs/architecture.md](docs/architecture.md).
 
 ## Status
 
-Phase 2 — LocalComputer, workspace isolation, permissions, filesystem/terminal tools.
+Phase 3 — Agent delegation and capability-based routing (Klaus → Dev works).

@@ -32,6 +32,7 @@ export class AgentStore {
       input.tools ?? [
         "echo",
         "agent_message",
+        "delegate_task",
         "read_file",
         "write_file",
         "list_dir",
@@ -40,7 +41,8 @@ export class AgentStore {
       ]
     ).map((name) => ({ name }));
     const skills = (input.skills ?? []).map((name) => ({ name }));
-    const capabilities = input.capabilities ?? [];
+    const capabilities =
+      input.capabilities ?? inferCapabilities(name, input.description ?? "");
 
     const agent: Agent = {
       id,
@@ -164,8 +166,32 @@ function defaultInstructions(name: string, description: string): string {
     `You are ${desc}.`,
     "Be concise, practical, and honest about what you can and cannot do.",
     "Use tools when they help complete the user's request.",
+    "When another agent is a better fit, use delegate_task instead of doing their work yourself.",
     "You operate inside the Sora local runtime.",
   ].join(" ");
+}
+
+/** Soft defaults from name/description — never a hardcoded task router. */
+function inferCapabilities(name: string, description: string): string[] {
+  const text = `${name} ${description}`.toLowerCase();
+  const caps = new Set<string>();
+
+  if (/\b(dev|engineer|software|code|bun|typescript|backend)\b/.test(text)) {
+    for (const c of ["typescript", "bun", "backend", "coding", "filesystem", "terminal"]) {
+      caps.add(c);
+    }
+  }
+  if (/\b(klaus|assistant|executive)\b/.test(text)) {
+    for (const c of ["assistant", "coordination", "delegation"]) caps.add(c);
+  }
+  if (/\b(research|researcher|search)\b/.test(text)) {
+    for (const c of ["research", "web", "summarization"]) caps.add(c);
+  }
+  if (/\b(ops|operations|automation)\b/.test(text)) {
+    for (const c of ["ops", "automation", "terminal"]) caps.add(c);
+  }
+
+  return [...caps];
 }
 
 function rowToAgent(row: Record<string, unknown>): Agent {

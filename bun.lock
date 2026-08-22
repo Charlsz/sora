@@ -32,6 +32,7 @@
         "@sora/memory": "workspace:*",
         "@sora/models": "workspace:*",
         "@sora/permissions": "workspace:*",
+        "@sora/protocol": "workspace:*",
         "@sora/tools": "workspace:*",
       },
     },
@@ -61,6 +62,10 @@
         "@sora/core": "workspace:*",
       },
     },
+    "packages/protocol": {
+      "name": "@sora/protocol",
+      "version": "0.1.0",
+    },
     "packages/tools": {
       "name": "@sora/tools",
       "version": "0.1.0",
@@ -84,6 +89,8 @@
     "@sora/models": ["@sora/models@workspace:packages/models"],
 
     "@sora/permissions": ["@sora/permissions@workspace:packages/permissions"],
+
+    "@sora/protocol": ["@sora/protocol@workspace:packages/protocol"],
 
     "@sora/tools": ["@sora/tools@workspace:packages/tools"],
 

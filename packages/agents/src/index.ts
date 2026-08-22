@@ -19,6 +19,7 @@ import {
   createBuiltinToolRegistry,
   type ToolRegistry,
 } from "@sora/tools";
+import { DelegationService } from "./delegation.ts";
 import { AgentRunner } from "./runner.ts";
 import { AgentStore } from "./store.ts";
 import type { CreateAgentInput } from "./types.ts";
@@ -36,6 +37,7 @@ export type SoraServices = {
   memory: SqliteMemoryStore;
   conversations: SqliteConversationStore;
   permissions: PermissionGate;
+  delegation: DelegationService;
 };
 
 export function createSoraServices(
@@ -63,6 +65,12 @@ export function createSoraServices(
     runtime.events,
     permissions,
   );
+  const delegation = new DelegationService({
+    agents,
+    runner,
+    events: runtime.events,
+  });
+  runner.setDelegation(delegation);
 
   return {
     runtime,
@@ -73,6 +81,7 @@ export function createSoraServices(
     memory,
     conversations,
     permissions,
+    delegation,
   };
 }
 
@@ -89,6 +98,7 @@ export async function createAgent(
   return services.agents.create(input, services.runtime.config.defaultModel);
 }
 
+export { DelegationService } from "./delegation.ts";
 export { AgentRunner, type RunAgentInput, type RunAgentResult } from "./runner.ts";
 export { AgentStore } from "./store.ts";
 export {

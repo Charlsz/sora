@@ -72,6 +72,30 @@ describe("agents", () => {
     expect(content).toContain("console.log");
   });
 
+  test("Klaus delegates to Dev", async () => {
+    await createAgent(services, {
+      name: "Klaus",
+      description: "Executive assistant",
+    });
+    await createAgent(services, {
+      name: "Dev",
+      description: "Builds TypeScript and Bun applications",
+    });
+
+    const result = await services.runner.run({
+      agent: "klaus",
+      prompt: "Ask Dev to create a hello world Bun server",
+    });
+
+    expect(result.toolCalls.some((t) => t.name === "delegate_task" && t.ok)).toBe(
+      true,
+    );
+    const server = await Bun.file(
+      join(services.runtime.paths.agent("dev").workspace, "server.ts"),
+    ).text();
+    expect(server).toContain("Bun.serve");
+  });
+
   test("persists conversation messages", async () => {
     await createAgent(services, { name: "Ops" });
     const result = await services.runner.run({

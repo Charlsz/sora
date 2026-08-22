@@ -78,6 +78,46 @@ export class MockProvider implements ModelProvider {
     const available = new Set(tools.map((t) => t.name));
     const id = () => `call_mock_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
+    const askMatch =
+      /(?:ask|tell|have)\s+([A-Za-z][\w-]*)\s+to\s+([\s\S]+)$/i.exec(text.trim()) ||
+      /delegate\s+(?:to\s+)?([A-Za-z][\w-]*)[:\s]+([\s\S]+)$/i.exec(text.trim());
+    if (askMatch && available.has("delegate_task")) {
+      return {
+        id: id(),
+        name: "delegate_task",
+        arguments: JSON.stringify({
+          prefer: askMatch[1],
+          task: askMatch[2]!.trim(),
+        }),
+      };
+    }
+
+    // Milestone-style coding tasks for engineering agents
+    if (
+      available.has("write_file") &&
+      /\b(hello\s*world|bun\s+server|http\s+server)\b/i.test(text)
+    ) {
+      const content = [
+        "const server = Bun.serve({",
+        "  port: 3000,",
+        "  fetch() {",
+        '    return new Response("Hello from Sora");',
+        "  },",
+        "});",
+        "",
+        'console.log(`Listening on http://localhost:${server.port}`);',
+        "",
+      ].join("\n");
+      return {
+        id: id(),
+        name: "write_file",
+        arguments: JSON.stringify({
+          path: "server.ts",
+          content,
+        }),
+      };
+    }
+
     const writeMatch =
       /(?:write|create)\s+(?:a\s+)?file\s+(?:named\s+|called\s+)?[`"']?([^\s`"']+)[`"']?\s+(?:with|containing)\s+(?:content\s+)?([\s\S]+)$/i.exec(
         text.trim(),

@@ -13,6 +13,20 @@ export type ToolContext = {
   computer?: import("@sora/computer").Computer;
   /** Optional permission gate for privileged tools. */
   permissions?: import("@sora/permissions").PermissionGate;
+  /** Optional delegation service for agent-to-agent work. */
+  delegation?: {
+    delegate(input: {
+      fromAgentId: string;
+      fromAgentSlug: string;
+      task: string;
+      requiredCapabilities?: string[];
+      prefer?: string;
+    }): Promise<{
+      toAgentSlug: string;
+      reply: string;
+      toolCalls: Array<{ name: string; ok: boolean; output: string }>;
+    }>;
+  };
   signal?: AbortSignal;
 };
 

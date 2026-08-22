@@ -6,6 +6,7 @@ describe("tools", () => {
     const registry = createBuiltinToolRegistry();
     expect(registry.list().map((t) => t.name).sort()).toEqual([
       "agent_message",
+      "delegate_task",
       "delete_file",
       "echo",
       "http_request",
