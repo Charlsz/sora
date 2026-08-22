@@ -1,5 +1,5 @@
 {
-  "name": "@sora/tools",
+  "name": "@sora/computer",
   "version": "0.1.0",
   "type": "module",
   "main": "./src/index.ts",
@@ -9,9 +9,5 @@
   },
   "scripts": {
     "test": "bun test"
-  },
-  "dependencies": {
-    "@sora/computer": "workspace:*",
-    "@sora/permissions": "workspace:*"
   }
 }

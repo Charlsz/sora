@@ -27,11 +27,17 @@
       "name": "@sora/agents",
       "version": "0.1.0",
       "dependencies": {
+        "@sora/computer": "workspace:*",
         "@sora/core": "workspace:*",
         "@sora/memory": "workspace:*",
         "@sora/models": "workspace:*",
+        "@sora/permissions": "workspace:*",
         "@sora/tools": "workspace:*",
       },
+    },
+    "packages/computer": {
+      "name": "@sora/computer",
+      "version": "0.1.0",
     },
     "packages/core": {
       "name": "@sora/core",
@@ -48,9 +54,20 @@
       "name": "@sora/models",
       "version": "0.1.0",
     },
+    "packages/permissions": {
+      "name": "@sora/permissions",
+      "version": "0.1.0",
+      "dependencies": {
+        "@sora/core": "workspace:*",
+      },
+    },
     "packages/tools": {
       "name": "@sora/tools",
       "version": "0.1.0",
+      "dependencies": {
+        "@sora/computer": "workspace:*",
+        "@sora/permissions": "workspace:*",
+      },
     },
   },
   "packages": {
@@ -58,11 +75,15 @@
 
     "@sora/cli": ["@sora/cli@workspace:cli"],
 
+    "@sora/computer": ["@sora/computer@workspace:packages/computer"],
+
     "@sora/core": ["@sora/core@workspace:packages/core"],
 
     "@sora/memory": ["@sora/memory@workspace:packages/memory"],
 
     "@sora/models": ["@sora/models@workspace:packages/models"],
+
+    "@sora/permissions": ["@sora/permissions@workspace:packages/permissions"],
 
     "@sora/tools": ["@sora/tools@workspace:packages/tools"],
 

@@ -2,6 +2,7 @@ import {
   createAgent,
   createSoraServices,
   initSora,
+  type CreateSoraServicesOptions,
 } from "@sora/agents";
 
 const HELP = `Sora — local AI agent runtime
@@ -14,6 +15,7 @@ Commands:
   agent list                   List agents
   agent create <name>          Create an agent
   agent run <name> <prompt>    Run an agent with a prompt
+  computer list                List agent computers / workspaces
   version                      Print version
   help                         Show this help
 
@@ -21,13 +23,14 @@ Options:
   --model <ref>                Model for agent create (default: config/default)
   --description <text>         Description for agent create
   --home <path>                Override SORA_HOME
+  --yes, -y                    Auto-approve permission prompts
   --json                       Machine-readable output where supported
 
 Examples:
   bun run sora init
   bun run sora agent create klaus --description "Executive assistant"
   bun run sora agent create dev --description "Software engineer"
-  bun run sora agent run klaus "hello"
+  bun run sora agent run dev "write file hello.ts containing console.log('hi')" --yes
 `;
 
 type Flags = Record<string, string | boolean>;
@@ -37,6 +40,10 @@ export async function main(argv: string[]): Promise<void> {
 
   if (flags.home && typeof flags.home === "string") {
     process.env.SORA_HOME = flags.home;
+  }
+
+  if (flags.yes || flags.y) {
+    process.env.SORA_AUTO_APPROVE = "1";
   }
 
   switch (command) {
@@ -69,10 +76,44 @@ export async function main(argv: string[]): Promise<void> {
       return;
     }
 
+    case "computer": {
+      await handleComputer(args, flags);
+      return;
+    }
+
     default:
       console.error(`Unknown command: ${command}`);
       console.log(HELP);
       process.exitCode = 1;
+  }
+}
+
+function servicesOptions(flags: Flags): CreateSoraServicesOptions {
+  return {
+    permissions: {
+      autoApprove: Boolean(flags.yes || flags.y),
+    },
+  };
+}
+
+async function handleComputer(args: string[], flags: Flags): Promise<void> {
+  const sub = args[0] ?? "list";
+  const services = createSoraServices(servicesOptions(flags));
+  try {
+    if (sub !== "list") {
+      throw new Error(`Unknown computer command: ${sub}`);
+    }
+    const agents = services.agents.list();
+    if (!agents.length) {
+      console.log("No agent computers yet.");
+      return;
+    }
+    for (const agent of agents) {
+      const workspace = services.runtime.paths.agent(agent.slug).workspace;
+      console.log(`${agent.slug.padEnd(16)} local  ${workspace}`);
+    }
+  } finally {
+    services.runtime.close();
   }
 }
 
@@ -84,7 +125,7 @@ async function handleAgent(args: string[], flags: Flags): Promise<void> {
     console.log(`Agent commands:
   sora agent list
   sora agent create <name> [--description ...] [--model provider:model]
-  sora agent run <name> <prompt>`);
+  sora agent run <name> <prompt> [--yes]`);
     return;
   }
 
@@ -94,9 +135,8 @@ async function handleAgent(args: string[], flags: Flags): Promise<void> {
       throw new Error("Usage: sora agent create <name>");
     }
 
-    // init if needed for first-run UX
     try {
-      const services = createSoraServices();
+      const services = createSoraServices(servicesOptions(flags));
       const agent = await createAgent(services, {
         name,
         description:
@@ -108,7 +148,9 @@ async function handleAgent(args: string[], flags: Flags): Promise<void> {
       } else {
         console.log(`Created agent ${agent.name} (${agent.slug})`);
         console.log(`Model: ${agent.model}`);
-        console.log(`Workspace: ${services.runtime.paths.agent(agent.slug).workspace}`);
+        console.log(
+          `Workspace: ${services.runtime.paths.agent(agent.slug).workspace}`,
+        );
       }
       services.runtime.close();
     } catch (error) {
@@ -124,7 +166,7 @@ async function handleAgent(args: string[], flags: Flags): Promise<void> {
     return;
   }
 
-  const services = createSoraServices();
+  const services = createSoraServices(servicesOptions(flags));
 
   try {
     if (sub === "list") {
@@ -160,6 +202,10 @@ async function handleAgent(args: string[], flags: Flags): Promise<void> {
             console.error(`✓ tool ${event.data?.tool}`);
           } else if (event.type === "agent.tool.failed") {
             console.error(`✗ tool ${event.data?.tool}: ${event.data?.error}`);
+          } else if (event.type === "permission.requested") {
+            console.error(
+              `permission ${event.data?.action} → ${event.data?.decision}`,
+            );
           }
         });
       }
@@ -192,7 +238,7 @@ function parseArgs(argv: string[]): {
     if (token.startsWith("--")) {
       const key = token.slice(2);
       const next = argv[i + 1];
-      if (!next || next.startsWith("--")) {
+      if (!next || next.startsWith("-")) {
         flags[key] = true;
       } else {
         flags[key] = next;

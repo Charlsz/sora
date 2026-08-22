@@ -9,6 +9,10 @@ export type ToolContext = {
   agentId: string;
   agentSlug: string;
   workspacePath: string;
+  /** Optional computer bound to this agent workspace. */
+  computer?: import("@sora/computer").Computer;
+  /** Optional permission gate for privileged tools. */
+  permissions?: import("@sora/permissions").PermissionGate;
   signal?: AbortSignal;
 };
 

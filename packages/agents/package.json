@@ -11,9 +11,11 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@sora/computer": "workspace:*",
     "@sora/core": "workspace:*",
     "@sora/memory": "workspace:*",
     "@sora/models": "workspace:*",
+    "@sora/permissions": "workspace:*",
     "@sora/tools": "workspace:*"
   }
 }

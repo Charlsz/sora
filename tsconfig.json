@@ -19,7 +19,9 @@
       "@sora/models": ["./packages/models/src/index.ts"],
       "@sora/tools": ["./packages/tools/src/index.ts"],
       "@sora/memory": ["./packages/memory/src/index.ts"],
-      "@sora/agents": ["./packages/agents/src/index.ts"]
+      "@sora/agents": ["./packages/agents/src/index.ts"],
+      "@sora/computer": ["./packages/computer/src/index.ts"],
+      "@sora/permissions": ["./packages/permissions/src/index.ts"]
     }
   },
   "include": ["packages/*/src/**/*", "cli/src/**/*", "tests/**/*"]

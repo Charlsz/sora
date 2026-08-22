@@ -1,10 +1,12 @@
 import type { EventBus, SoraPaths } from "@sora/core";
+import { LocalComputer } from "@sora/computer";
 import type { ConversationStore, MemoryStore } from "@sora/memory";
 import type {
   ChatMessage,
   ChatToolDefinition,
   ProviderRegistry,
 } from "@sora/models";
+import type { PermissionGate } from "@sora/permissions";
 import type { Tool, ToolRegistry } from "@sora/tools";
 import type { AgentStore } from "./store.ts";
 import type { Agent } from "./types.ts";
@@ -32,6 +34,7 @@ export class AgentRunner {
     private readonly memory: MemoryStore,
     private readonly paths: SoraPaths,
     private readonly events: EventBus,
+    private readonly permissions: PermissionGate,
   ) {}
 
   async run(input: RunAgentInput): Promise<RunAgentResult> {
@@ -118,7 +121,11 @@ export class AgentRunner {
               "agents",
             );
 
-            const result = await this.#executeTool(agent, call.name, call.arguments);
+            const result = await this.#executeTool(
+              agent,
+              call.name,
+              call.arguments,
+            );
             toolCallLog.push({
               name: call.name,
               ok: result.ok,
@@ -206,10 +213,13 @@ export class AgentRunner {
   }
 
   #systemPrompt(agent: Agent, memories: string[]): string {
+    const workspace = this.paths.agent(agent.slug).workspace;
     const parts = [
       agent.instructions,
       `Agent slug: ${agent.slug}`,
+      `Workspace: ${workspace}`,
       `Capabilities: ${agent.capabilities.join(", ") || "general"}`,
+      "You may only access files and commands inside your workspace.",
     ];
     if (memories.length) {
       parts.push("Relevant memory:\n- " + memories.join("\n- "));
@@ -255,10 +265,17 @@ export class AgentRunner {
     }
 
     const workspacePath = this.paths.agent(agent.slug).workspace;
+    const computer = new LocalComputer({
+      id: `agent:${agent.slug}`,
+      workspaceRoot: workspacePath,
+    });
+
     return tool.execute(input, {
       agentId: agent.id,
       agentSlug: agent.slug,
       workspacePath,
+      computer,
+      permissions: this.permissions,
     });
   }
 }

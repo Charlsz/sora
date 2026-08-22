@@ -2,6 +2,7 @@ import type {
   ChatMessage,
   ChatRequest,
   ChatResponse,
+  ChatToolDefinition,
   ModelProvider,
   StreamChunk,
   ToolCall,
@@ -15,22 +16,34 @@ export class MockProvider implements ModelProvider {
   readonly id = "mock";
 
   async chat(request: ChatRequest): Promise<ChatResponse> {
+    const last = request.messages[request.messages.length - 1];
+
+    // After tools run, produce a final natural-language summary.
+    if (last?.role === "tool") {
+      const toolNotes = request.messages
+        .filter((m) => m.role === "tool")
+        .map((m) => `- ${m.name ?? "tool"}: ${m.content ?? ""}`)
+        .join("\n");
+      return {
+        message: {
+          role: "assistant",
+          content: `Completed with tools:\n${toolNotes}`,
+        },
+        finishReason: "stop",
+      };
+    }
+
     const lastUser = [...request.messages].reverse().find((m) => m.role === "user");
     const content = lastUser?.content ?? "";
     const text = typeof content === "string" ? content : "";
 
-    if (request.tools?.length && /\b(use tool|call tool|tool:)\b/i.test(text)) {
-      const tool = request.tools[0]!;
-      const toolCall: ToolCall = {
-        id: `call_mock_${Date.now()}`,
-        name: tool.name,
-        arguments: JSON.stringify({ input: text }),
-      };
+    const planned = this.#planToolCall(text, request.tools ?? []);
+    if (planned) {
       return {
         message: {
           role: "assistant",
           content: null,
-          toolCalls: [toolCall],
+          toolCalls: [planned],
         },
         finishReason: "tool_calls",
       };
@@ -55,6 +68,70 @@ export class MockProvider implements ModelProvider {
       }
     }
     yield { type: "done", response };
+  }
+
+  #planToolCall(
+    text: string,
+    tools: ChatToolDefinition[],
+  ): ToolCall | null {
+    if (!tools.length) return null;
+    const available = new Set(tools.map((t) => t.name));
+    const id = () => `call_mock_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+    const writeMatch =
+      /(?:write|create)\s+(?:a\s+)?file\s+(?:named\s+|called\s+)?[`"']?([^\s`"']+)[`"']?\s+(?:with|containing)\s+(?:content\s+)?([\s\S]+)$/i.exec(
+        text.trim(),
+      );
+    if (writeMatch && available.has("write_file")) {
+      return {
+        id: id(),
+        name: "write_file",
+        arguments: JSON.stringify({
+          path: writeMatch[1],
+          content: writeMatch[2]!.trim(),
+        }),
+      };
+    }
+
+    const readMatch =
+      /(?:read|open)\s+(?:the\s+)?file\s+[`"']?([^\s`"']+)[`"']?/i.exec(text);
+    if (readMatch && available.has("read_file")) {
+      return {
+        id: id(),
+        name: "read_file",
+        arguments: JSON.stringify({ path: readMatch[1] }),
+      };
+    }
+
+    if (/\b(list\s+(files|dir|directory)|inspect\s+workspace)\b/i.test(text) && available.has("list_dir")) {
+      return {
+        id: id(),
+        name: "list_dir",
+        arguments: JSON.stringify({ path: "." }),
+      };
+    }
+
+    const runMatch =
+      /(?:run|execute)\s+(?:command\s+)?[`"'](.+?)[`"']\s*$/i.exec(text.trim()) ||
+      /(?:run|execute)\s+(.+)$/i.exec(text.trim());
+    if (runMatch && available.has("terminal") && /\b(run|execute|terminal|shell)\b/i.test(text)) {
+      return {
+        id: id(),
+        name: "terminal",
+        arguments: JSON.stringify({ command: runMatch[1]!.trim() }),
+      };
+    }
+
+    if (/\b(use tool|call tool|tool:)\b/i.test(text)) {
+      const tool = tools[0]!;
+      return {
+        id: id(),
+        name: tool.name,
+        arguments: JSON.stringify({ input: text }),
+      };
+    }
+
+    return null;
   }
 
   #composeReply(userText: string, messages: ChatMessage[]): string {

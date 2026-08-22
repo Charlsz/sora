@@ -28,9 +28,17 @@ export class AgentStore {
 
     const now = new Date().toISOString();
     const id = `agent_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
-    const tools = (input.tools ?? ["echo", "agent_message"]).map((name) => ({
-      name,
-    }));
+    const tools = (
+      input.tools ?? [
+        "echo",
+        "agent_message",
+        "read_file",
+        "write_file",
+        "list_dir",
+        "delete_file",
+        "terminal",
+      ]
+    ).map((name) => ({ name }));
     const skills = (input.skills ?? []).map((name) => ({ name }));
     const capabilities = input.capabilities ?? [];
 

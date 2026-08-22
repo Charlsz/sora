@@ -51,8 +51,8 @@ The `openai-compatible` transport covers OpenAI, OpenRouter, Ollama (OpenAI mode
 
 ## Phase roadmap
 
-1. Runtime + agents + models + tools + memory + CLI
-2. LocalComputer + permissions + workspace isolation
+1. Runtime + agents + models + tools + memory + CLI — done
+2. LocalComputer + permissions + workspace isolation — done
 3. Delegation + agent messaging + routing
 4. Skills
 5. Workflows
@@ -72,8 +72,12 @@ Native, zero-config local persistence. The `MemoryStore` interface keeps the doo
 
 ### Mock model provider
 
-Phase 1 must run without cloud credentials. `mock:echo` is the default so CLI demos and tests stay offline-capable.
+Phase 1 must run without cloud credentials. `mock:echo` is the default so CLI demos and tests stay offline-capable. The mock provider recognizes simple filesystem/terminal intents for Phase 2 demos.
 
 ### Single process runtime
 
 Phase 1 embeds the runtime in the CLI process. A long-lived daemon/API arrives when the UI needs it.
+
+### Workspace-scoped LocalComputer
+
+Agents never receive a host-root filesystem handle. `LocalFilesystem.resolveSafe` rejects path traversal. Privileged actions go through `PermissionGate` (`allow` / `deny` / `ask`). CLI `--yes` or `SORA_AUTO_APPROVE=1` auto-approves ask decisions for local development.

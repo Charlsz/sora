@@ -6,8 +6,13 @@ describe("tools", () => {
     const registry = createBuiltinToolRegistry();
     expect(registry.list().map((t) => t.name).sort()).toEqual([
       "agent_message",
+      "delete_file",
       "echo",
       "http_request",
+      "list_dir",
+      "read_file",
+      "terminal",
+      "write_file",
     ]);
 
     const result = await registry.get("echo").execute(

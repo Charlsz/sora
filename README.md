@@ -39,17 +39,19 @@ State lives in `~/.sora` (override with `SORA_HOME`):
 
 ## Monorepo
 
-| Package        | Role                          |
-|----------------|-------------------------------|
-| `@sora/core`   | Runtime, events, SQLite, paths |
-| `@sora/models` | Model providers               |
-| `@sora/tools`  | Tool interface + builtins     |
-| `@sora/memory` | Conversation + long-term memory |
-| `@sora/agents` | Agents + runner               |
-| `@sora/cli`    | CLI                           |
+| Package             | Role                               |
+|---------------------|------------------------------------|
+| `@sora/core`        | Runtime, events, SQLite, paths     |
+| `@sora/models`      | Model providers                    |
+| `@sora/tools`       | Tool interface + builtins          |
+| `@sora/memory`      | Conversation + long-term memory    |
+| `@sora/computer`    | Computer abstraction + LocalComputer |
+| `@sora/permissions` | Central permission gate            |
+| `@sora/agents`      | Agents + runner                    |
+| `@sora/cli`         | CLI                                |
 
 See [docs/architecture.md](docs/architecture.md).
 
 ## Status
 
-Phase 1 — Runtime foundation (agents, models, tools, memory, CLI).
+Phase 2 — LocalComputer, workspace isolation, permissions, filesystem/terminal tools.

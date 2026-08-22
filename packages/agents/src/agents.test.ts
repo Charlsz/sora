@@ -16,7 +16,10 @@ describe("agents", () => {
     home = mkdtempSync(join(tmpdir(), "sora-agents-"));
     const { runtime } = initSora({ home });
     runtime.close();
-    services = createSoraServices({ home });
+    services = createSoraServices({
+      home,
+      permissions: { autoApprove: true },
+    });
   });
 
   afterEach(async () => {
@@ -53,6 +56,20 @@ describe("agents", () => {
     });
     expect(result.reply.toLowerCase()).toContain("hello");
     expect(result.conversationId).toStartWith("conv_");
+  });
+
+  test("writes files through LocalComputer tools", async () => {
+    await createAgent(services, { name: "Dev" });
+    const result = await services.runner.run({
+      agent: "dev",
+      prompt: "write file hello.ts containing console.log('hi')",
+    });
+    expect(result.toolCalls.some((t) => t.name === "write_file" && t.ok)).toBe(
+      true,
+    );
+    const workspace = services.runtime.paths.agent("dev").workspace;
+    const content = await Bun.file(join(workspace, "hello.ts")).text();
+    expect(content).toContain("console.log");
   });
 
   test("persists conversation messages", async () => {

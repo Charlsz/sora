@@ -11,12 +11,21 @@ import {
   type ProviderRegistry,
 } from "@sora/models";
 import {
+  createPermissionGate,
+  type PermissionGate,
+  type PermissionGateOptions,
+} from "@sora/permissions";
+import {
   createBuiltinToolRegistry,
   type ToolRegistry,
 } from "@sora/tools";
 import { AgentRunner } from "./runner.ts";
 import { AgentStore } from "./store.ts";
 import type { CreateAgentInput } from "./types.ts";
+
+export type CreateSoraServicesOptions = RuntimeOptions & {
+  permissions?: PermissionGateOptions;
+};
 
 export type SoraServices = {
   runtime: SoraRuntime;
@@ -26,9 +35,12 @@ export type SoraServices = {
   providers: ProviderRegistry;
   memory: SqliteMemoryStore;
   conversations: SqliteConversationStore;
+  permissions: PermissionGate;
 };
 
-export function createSoraServices(options: RuntimeOptions = {}): SoraServices {
+export function createSoraServices(
+  options: CreateSoraServicesOptions = {},
+): SoraServices {
   const runtime = new SoraRuntime(options);
   runtime.ensureInitialized();
 
@@ -37,6 +49,10 @@ export function createSoraServices(options: RuntimeOptions = {}): SoraServices {
   const conversations = new SqliteConversationStore(runtime.db);
   const tools = createBuiltinToolRegistry();
   const providers = createDefaultProviderRegistry();
+  const permissions = createPermissionGate({
+    events: runtime.events,
+    ...options.permissions,
+  });
   const runner = new AgentRunner(
     agents,
     providers,
@@ -45,9 +61,19 @@ export function createSoraServices(options: RuntimeOptions = {}): SoraServices {
     memory,
     runtime.paths,
     runtime.events,
+    permissions,
   );
 
-  return { runtime, agents, runner, tools, providers, memory, conversations };
+  return {
+    runtime,
+    agents,
+    runner,
+    tools,
+    providers,
+    memory,
+    conversations,
+    permissions,
+  };
 }
 
 export function initSora(options: RuntimeOptions & { force?: boolean } = {}) {

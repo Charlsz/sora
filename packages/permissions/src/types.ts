@@ -1,0 +1,60 @@
+export type PermissionDecision = "allow" | "deny" | "ask";
+
+export type PermissionAction =
+  | "fs.read"
+  | "fs.write"
+  | "fs.delete"
+  | "terminal.exec"
+  | "http.request"
+  | "browser.navigate"
+  | "agent.message"
+  | "agent.delegate";
+
+export type PermissionRequest = {
+  agentId: string;
+  agentSlug: string;
+  action: PermissionAction;
+  resource: string;
+  detail?: Record<string, unknown>;
+};
+
+export type PermissionPolicy = {
+  /** Exact action → decision. */
+  actions: Partial<Record<PermissionAction, PermissionDecision>>;
+  /** Optional default when action is unspecified. */
+  default: PermissionDecision;
+};
+
+export type PermissionResolution = {
+  decision: PermissionDecision;
+  reason: string;
+};
+
+export const DEFAULT_AGENT_POLICY: PermissionPolicy = {
+  default: "ask",
+  actions: {
+    "fs.read": "allow",
+    "fs.write": "ask",
+    "fs.delete": "ask",
+    "terminal.exec": "ask",
+    "http.request": "ask",
+    "browser.navigate": "ask",
+    "agent.message": "allow",
+    "agent.delegate": "ask",
+  },
+};
+
+/** Development-friendly policy used when SORA_AUTO_APPROVE=1 or --yes. */
+export const AUTO_APPROVE_POLICY: PermissionPolicy = {
+  default: "allow",
+  actions: {
+    "fs.read": "allow",
+    "fs.write": "allow",
+    "fs.delete": "allow",
+    "terminal.exec": "allow",
+    "http.request": "allow",
+    "browser.navigate": "allow",
+    "agent.message": "allow",
+    "agent.delegate": "allow",
+  },
+};
