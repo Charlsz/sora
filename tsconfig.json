@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ESNext"],
+    "types": ["bun-types"],
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "declaration": true,
+    "declarationMap": true,
+    "paths": {
+      "@sora/core": ["./packages/core/src/index.ts"],
+      "@sora/models": ["./packages/models/src/index.ts"],
+      "@sora/tools": ["./packages/tools/src/index.ts"],
+      "@sora/memory": ["./packages/memory/src/index.ts"],
+      "@sora/agents": ["./packages/agents/src/index.ts"]
+    }
+  },
+  "include": ["packages/*/src/**/*", "cli/src/**/*", "tests/**/*"]
+}

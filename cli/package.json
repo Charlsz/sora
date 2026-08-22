@@ -1,0 +1,19 @@
+{
+  "name": "@sora/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "sora": "./src/bin.ts"
+  },
+  "main": "./src/bin.ts",
+  "scripts": {
+    "start": "bun run ./src/bin.ts"
+  },
+  "dependencies": {
+    "@sora/agents": "workspace:*",
+    "@sora/core": "workspace:*",
+    "@sora/memory": "workspace:*",
+    "@sora/models": "workspace:*",
+    "@sora/tools": "workspace:*"
+  }
+}

@@ -1,0 +1,213 @@
+import {
+  createAgent,
+  createSoraServices,
+  initSora,
+} from "@sora/agents";
+
+const HELP = `Sora — local AI agent runtime
+
+Usage:
+  sora <command> [options]
+
+Commands:
+  init                         Initialize ~/.sora workspace
+  agent list                   List agents
+  agent create <name>          Create an agent
+  agent run <name> <prompt>    Run an agent with a prompt
+  version                      Print version
+  help                         Show this help
+
+Options:
+  --model <ref>                Model for agent create (default: config/default)
+  --description <text>         Description for agent create
+  --home <path>                Override SORA_HOME
+  --json                       Machine-readable output where supported
+
+Examples:
+  bun run sora init
+  bun run sora agent create klaus --description "Executive assistant"
+  bun run sora agent create dev --description "Software engineer"
+  bun run sora agent run klaus "hello"
+`;
+
+type Flags = Record<string, string | boolean>;
+
+export async function main(argv: string[]): Promise<void> {
+  const { command, args, flags } = parseArgs(argv);
+
+  if (flags.home && typeof flags.home === "string") {
+    process.env.SORA_HOME = flags.home;
+  }
+
+  switch (command) {
+    case undefined:
+    case "help":
+    case "--help":
+    case "-h":
+      console.log(HELP);
+      return;
+
+    case "version":
+    case "--version":
+    case "-v":
+      console.log("sora 0.1.0");
+      return;
+
+    case "init": {
+      const { runtime, config } = initSora({
+        home: typeof flags.home === "string" ? flags.home : undefined,
+        force: Boolean(flags.force),
+      });
+      console.log(`Initialized Sora at ${runtime.paths.home}`);
+      console.log(`Default model: ${config.defaultModel}`);
+      runtime.close();
+      return;
+    }
+
+    case "agent": {
+      await handleAgent(args, flags);
+      return;
+    }
+
+    default:
+      console.error(`Unknown command: ${command}`);
+      console.log(HELP);
+      process.exitCode = 1;
+  }
+}
+
+async function handleAgent(args: string[], flags: Flags): Promise<void> {
+  const sub = args[0];
+  const rest = args.slice(1);
+
+  if (!sub || sub === "help") {
+    console.log(`Agent commands:
+  sora agent list
+  sora agent create <name> [--description ...] [--model provider:model]
+  sora agent run <name> <prompt>`);
+    return;
+  }
+
+  if (sub === "create") {
+    const name = rest[0];
+    if (!name) {
+      throw new Error("Usage: sora agent create <name>");
+    }
+
+    // init if needed for first-run UX
+    try {
+      const services = createSoraServices();
+      const agent = await createAgent(services, {
+        name,
+        description:
+          typeof flags.description === "string" ? flags.description : undefined,
+        model: typeof flags.model === "string" ? flags.model : undefined,
+      });
+      if (flags.json) {
+        console.log(JSON.stringify(agent, null, 2));
+      } else {
+        console.log(`Created agent ${agent.name} (${agent.slug})`);
+        console.log(`Model: ${agent.model}`);
+        console.log(`Workspace: ${services.runtime.paths.agent(agent.slug).workspace}`);
+      }
+      services.runtime.close();
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.includes("not initialized")
+      ) {
+        initSora();
+        return handleAgent(args, flags);
+      }
+      throw error;
+    }
+    return;
+  }
+
+  const services = createSoraServices();
+
+  try {
+    if (sub === "list") {
+      const agents = services.agents.list();
+      if (flags.json) {
+        console.log(JSON.stringify(agents, null, 2));
+        return;
+      }
+      if (!agents.length) {
+        console.log("No agents yet. Create one with: sora agent create <name>");
+        return;
+      }
+      for (const agent of agents) {
+        console.log(
+          `${agent.slug.padEnd(16)} ${agent.status.padEnd(8)} ${agent.model.padEnd(20)} ${agent.description || agent.name}`,
+        );
+      }
+      return;
+    }
+
+    if (sub === "run") {
+      const name = rest[0];
+      const prompt = rest.slice(1).join(" ").trim();
+      if (!name || !prompt) {
+        throw new Error('Usage: sora agent run <name> "<prompt>"');
+      }
+
+      if (!flags.quiet) {
+        services.runtime.events.on("*", (event) => {
+          if (event.type === "agent.tool.started") {
+            console.error(`→ tool ${event.data?.tool}`);
+          } else if (event.type === "agent.tool.completed") {
+            console.error(`✓ tool ${event.data?.tool}`);
+          } else if (event.type === "agent.tool.failed") {
+            console.error(`✗ tool ${event.data?.tool}: ${event.data?.error}`);
+          }
+        });
+      }
+
+      const result = await services.runner.run({ agent: name, prompt });
+      if (flags.json) {
+        console.log(JSON.stringify(result, null, 2));
+      } else {
+        console.log(result.reply);
+      }
+      return;
+    }
+
+    throw new Error(`Unknown agent command: ${sub}`);
+  } finally {
+    services.runtime.close();
+  }
+}
+
+function parseArgs(argv: string[]): {
+  command?: string;
+  args: string[];
+  flags: Flags;
+} {
+  const flags: Flags = {};
+  const positional: string[] = [];
+
+  for (let i = 0; i < argv.length; i++) {
+    const token = argv[i]!;
+    if (token.startsWith("--")) {
+      const key = token.slice(2);
+      const next = argv[i + 1];
+      if (!next || next.startsWith("--")) {
+        flags[key] = true;
+      } else {
+        flags[key] = next;
+        i += 1;
+      }
+    } else if (token.startsWith("-") && token.length === 2) {
+      flags[token.slice(1)] = true;
+    } else {
+      positional.push(token);
+    }
+  }
+
+  return {
+    command: positional[0],
+    args: positional.slice(1),
+    flags,
+  };
+}
