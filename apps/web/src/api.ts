@@ -48,6 +48,17 @@ export type PendingPermission = {
   createdAt: string;
 };
 
+export type ProviderInfo = {
+  id: string;
+  name: string;
+  description: string;
+  configured: boolean;
+  fromEnv: boolean;
+  needsKey: boolean;
+  baseUrl: string;
+  hint: string | null;
+};
+
 export type SoraEvent = {
   id: string;
   type: string;
@@ -118,6 +129,35 @@ export const soraApi = {
     api<{ ok: boolean }>("/api/permissions/respond", {
       method: "POST",
       body: JSON.stringify({ requestId, decision }),
+    }),
+  providers: () =>
+    api<{ providers: ProviderInfo[]; defaultModel: string }>(
+      "/api/providers",
+    ),
+  setProvider: (
+    id: string,
+    body: { apiKey?: string; baseUrl?: string },
+  ) =>
+    api<{ ok: boolean; providers: ProviderInfo[] }>(`/api/providers/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  clearProvider: (id: string) =>
+    api<{ ok: boolean }>(`/api/providers/${id}`, { method: "DELETE" }),
+  testProvider: (model?: string) =>
+    api<{ ok: boolean; model: string; reply?: string; error?: string }>(
+      "/api/providers/test",
+      {
+        method: "POST",
+        body: JSON.stringify({ model }),
+      },
+    ),
+  getConfig: () =>
+    api<{ defaultModel: string; home: string }>("/api/config"),
+  setConfig: (body: { defaultModel: string }) =>
+    api<{ defaultModel: string }>("/api/config", {
+      method: "PUT",
+      body: JSON.stringify(body),
     }),
 };
 

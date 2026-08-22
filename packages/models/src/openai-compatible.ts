@@ -33,23 +33,39 @@ type OpenAIMessage = {
  */
 export class OpenAICompatibleProvider implements ModelProvider {
   readonly id: string;
-  readonly apiKey: string;
-  readonly baseUrl: string;
+  #apiKey: string;
+  #baseUrl: string;
   readonly defaultHeaders: Record<string, string>;
 
   constructor(options: OpenAICompatibleOptions = {}) {
     this.id = options.id ?? "openai";
-    this.apiKey =
+    this.#apiKey =
       options.apiKey ??
       process.env.OPENAI_API_KEY ??
       process.env.SORA_API_KEY ??
       "";
-    this.baseUrl = (
+    this.#baseUrl = (
       options.baseUrl ??
       process.env.OPENAI_BASE_URL ??
       "https://api.openai.com/v1"
     ).replace(/\/$/, "");
     this.defaultHeaders = options.defaultHeaders ?? {};
+  }
+
+  get apiKey(): string {
+    return this.#apiKey;
+  }
+
+  get baseUrl(): string {
+    return this.#baseUrl;
+  }
+
+  /** Hot-reload credentials from ~/.sora/secrets.json without restarting. */
+  configure(options: { apiKey?: string; baseUrl?: string }): void {
+    if (options.apiKey !== undefined) this.#apiKey = options.apiKey;
+    if (options.baseUrl !== undefined) {
+      this.#baseUrl = options.baseUrl.replace(/\/$/, "");
+    }
   }
 
   async chat(request: ChatRequest): Promise<ChatResponse> {
@@ -82,9 +98,13 @@ export class OpenAICompatibleProvider implements ModelProvider {
   }
 
   async #post(path: string, body: Record<string, unknown>): Promise<any> {
-    if (!this.apiKey && !this.baseUrl.includes("localhost") && !this.baseUrl.includes("127.0.0.1")) {
+    if (
+      !this.#apiKey &&
+      !this.#baseUrl.includes("localhost") &&
+      !this.#baseUrl.includes("127.0.0.1")
+    ) {
       throw new Error(
-        `Provider "${this.id}" requires an API key. Set OPENAI_API_KEY or use mock:echo.`,
+        `Provider "${this.id}" requires an API key. Connect it in Settings or set OPENAI_API_KEY / use mock:echo.`,
       );
     }
 
@@ -92,11 +112,11 @@ export class OpenAICompatibleProvider implements ModelProvider {
       "content-type": "application/json",
       ...this.defaultHeaders,
     };
-    if (this.apiKey) {
-      headers.authorization = `Bearer ${this.apiKey}`;
+    if (this.#apiKey) {
+      headers.authorization = `Bearer ${this.#apiKey}`;
     }
 
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const res = await fetch(`${this.#baseUrl}${path}`, {
       method: "POST",
       headers,
       body: JSON.stringify(body),

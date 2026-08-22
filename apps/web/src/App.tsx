@@ -12,6 +12,7 @@ import ApprovalCard from "./components/ApprovalCard";
 import ContextCards from "./components/ContextCards";
 import LoadingState from "./components/LoadingState";
 import PromptBar from "./components/PromptBar";
+import ProviderSettings from "./components/ProviderSettings";
 import SidebarNav from "./components/SidebarNav";
 import StreamingText from "./components/StreamingText";
 import TaskRows, { type TaskRowData } from "./components/TaskRows";
@@ -39,6 +40,7 @@ export function App() {
   const [pending, setPending] = useState<PendingPermission[]>([]);
   const [nav, setNav] = useState("chats");
   const [chatTitle, setChatTitle] = useState<string | null>(null);
+  const [defaultModel, setDefaultModel] = useState<string>("mock:echo");
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const active = useMemo(
@@ -47,16 +49,18 @@ export function App() {
   );
 
   async function refresh() {
-    const [a, s, w, p] = await Promise.all([
+    const [a, s, w, p, providers] = await Promise.all([
       soraApi.agents(),
       soraApi.skills(),
       soraApi.workflows(),
       soraApi.pendingPermissions().catch(() => [] as PendingPermission[]),
+      soraApi.providers().catch(() => null),
     ]);
     setAgents(a);
     setSkills(s);
     setWorkflows(w);
     setPending(p);
+    if (providers) setDefaultModel(providers.defaultModel);
     setSelected((prev) => prev ?? a[0]?.slug ?? null);
   }
 
@@ -278,8 +282,10 @@ export function App() {
             label: "Routines",
             count: String(workflows.length),
           },
+          { key: "settings", label: "Models" },
         ]}
         footerLabel={apiOk ? "Runtime online" : "Connecting…"}
+        onFooterClick={() => setNav("settings")}
         onNewChat={() => {
           setLive([]);
           setChatTitle(null);
@@ -306,15 +312,17 @@ export function App() {
             </h1>
             <p className="text-[12px] text-ink-3">
               {active
-                ? `${active.model} · open-source agent runtime`
-                : "Local-first · model-agnostic"}
+                ? `${active.model} · default ${defaultModel}`
+                : `Local-first · ${defaultModel}`}
             </p>
           </div>
           {busy && <LoadingState label="Agent working" variant="Dots" />}
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-          {nav === "routines" ? (
+          {nav === "settings" ? (
+            <ProviderSettings onChanged={() => void refresh()} />
+          ) : nav === "routines" ? (
             <TaskRows
               rows={routineRows}
               onRun={(slug) => {
@@ -441,10 +449,32 @@ export function App() {
               }))}
               models={
                 active
-                  ? [{ key: active.model, name: active.model, desc: "Current" }]
-                  : []
+                  ? [
+                      {
+                        key: active.model,
+                        name: active.model,
+                        desc: "Agent model",
+                      },
+                      {
+                        key: defaultModel,
+                        name: defaultModel,
+                        desc: "Workspace default",
+                      },
+                    ].filter(
+                      (m, i, arr) =>
+                        arr.findIndex((x) => x.key === m.key) === i,
+                    )
+                  : defaultModel
+                    ? [
+                        {
+                          key: defaultModel,
+                          name: defaultModel,
+                          desc: "Default",
+                        },
+                      ]
+                    : []
               }
-              model={active?.model}
+              model={active?.model ?? defaultModel}
               onSend={(text) => void send(text)}
             />
           </div>

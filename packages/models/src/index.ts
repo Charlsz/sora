@@ -1,6 +1,15 @@
 export { MockProvider } from "./mock.ts";
-export { OpenAICompatibleProvider, type OpenAICompatibleOptions } from "./openai-compatible.ts";
-export { ProviderRegistry, createDefaultProviderRegistry } from "./registry.ts";
+export {
+  OpenAICompatibleProvider,
+  type OpenAICompatibleOptions,
+} from "./openai-compatible.ts";
+export {
+  ProviderRegistry,
+  createDefaultProviderRegistry,
+  type CreateRegistryOptions,
+  type ProviderSecretsInput,
+  type ProviderStatus,
+} from "./registry.ts";
 export {
   parseModelReference,
   type ChatMessage,

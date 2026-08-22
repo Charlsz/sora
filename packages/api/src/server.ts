@@ -148,6 +148,123 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
           );
         }
 
+        if (url.pathname === "/api/config" && req.method === "GET") {
+          return json(
+            {
+              defaultModel: services.runtime.config.defaultModel,
+              home: services.runtime.paths.home,
+            },
+            cors,
+          );
+        }
+
+        if (url.pathname === "/api/config" && req.method === "PUT") {
+          const body = (await req.json()) as { defaultModel?: string };
+          if (!body.defaultModel?.trim()) {
+            return json({ error: "defaultModel is required" }, cors, 400);
+          }
+          const ref = body.defaultModel.trim();
+          try {
+            services.providers.resolve(ref);
+          } catch (error) {
+            return json(
+              {
+                error:
+                  error instanceof Error ? error.message : "unknown provider",
+              },
+              cors,
+              400,
+            );
+          }
+          const config = services.runtime.updateConfig({ defaultModel: ref });
+          return json({ defaultModel: config.defaultModel }, cors);
+        }
+
+        if (url.pathname === "/api/providers" && req.method === "GET") {
+          return json(
+            {
+              providers: services.providers.status(services.runtime.secrets),
+              defaultModel: services.runtime.config.defaultModel,
+            },
+            cors,
+          );
+        }
+
+        const providerMatch = /^\/api\/providers\/([^/]+)$/.exec(url.pathname);
+        if (providerMatch && req.method === "PUT") {
+          const id = decodeURIComponent(providerMatch[1]!);
+          if (id === "mock") {
+            return json({ error: "mock provider needs no credentials" }, cors, 400);
+          }
+          const body = (await req.json()) as {
+            apiKey?: string;
+            baseUrl?: string;
+          };
+          services.runtime.setProviderCredential(id, {
+            apiKey: body.apiKey,
+            baseUrl: body.baseUrl,
+          });
+          services.reloadProviders();
+          return json(
+            {
+              ok: true,
+              providers: services.providers.status(services.runtime.secrets),
+            },
+            cors,
+          );
+        }
+
+        if (providerMatch && req.method === "DELETE") {
+          const id = decodeURIComponent(providerMatch[1]!);
+          services.runtime.clearProviderCredential(id);
+          services.reloadProviders();
+          return json(
+            {
+              ok: true,
+              providers: services.providers.status(services.runtime.secrets),
+            },
+            cors,
+          );
+        }
+
+        if (url.pathname === "/api/providers/test" && req.method === "POST") {
+          const body = (await req.json()) as { model?: string };
+          const model =
+            body.model?.trim() || services.runtime.config.defaultModel;
+          try {
+            const { provider, model: modelId } =
+              services.providers.resolve(model);
+            const response = await provider.chat({
+              model: modelId,
+              messages: [
+                {
+                  role: "user",
+                  content: "Reply with exactly: sora-ok",
+                },
+              ],
+              maxTokens: 32,
+            });
+            return json(
+              {
+                ok: true,
+                model,
+                reply: response.message.content ?? "",
+              },
+              cors,
+            );
+          } catch (error) {
+            return json(
+              {
+                ok: false,
+                model,
+                error: error instanceof Error ? error.message : String(error),
+              },
+              cors,
+              400,
+            );
+          }
+        }
+
         if (url.pathname === "/api/permissions/pending" && req.method === "GET") {
           return json(permissionAsk?.list() ?? [], cors);
         }

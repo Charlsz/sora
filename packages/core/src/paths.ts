@@ -12,6 +12,8 @@ export function getPaths(home = getSoraHome()) {
   return {
     home,
     config: join(home, "config.json"),
+    /** Provider API keys — never returned verbatim by the API. */
+    secrets: join(home, "secrets.json"),
     databaseDir: join(home, "database"),
     database: join(home, "database", "sora.sqlite"),
     agents: join(home, "agents"),

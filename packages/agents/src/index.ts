@@ -48,6 +48,7 @@ export type SoraServices = {
   skills: SkillRegistry;
   workflows: WorkflowStore;
   workflowEngine: WorkflowEngine;
+  reloadProviders: () => void;
 };
 
 export function createSoraServices(
@@ -60,7 +61,9 @@ export function createSoraServices(
   const memory = new SqliteMemoryStore(runtime.db);
   const conversations = new SqliteConversationStore(runtime.db);
   const tools = createBuiltinToolRegistry();
-  const providers = createDefaultProviderRegistry();
+  const providers = createDefaultProviderRegistry({
+    secrets: runtime.secrets,
+  });
   const permissions = createPermissionGate({
     events: runtime.events,
     ...options.permissions,
@@ -98,6 +101,12 @@ export function createSoraServices(
     },
   });
 
+  /** Re-read secrets from disk and hot-reload provider clients. */
+  const reloadProviders = () => {
+    runtime.ensureInitialized();
+    providers.applySecrets(runtime.secrets);
+  };
+
   return {
     runtime,
     agents,
@@ -111,6 +120,7 @@ export function createSoraServices(
     skills,
     workflows,
     workflowEngine,
+    reloadProviders,
   };
 }
 

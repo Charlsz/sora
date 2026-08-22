@@ -372,6 +372,11 @@ export default function SidebarNav({
                     <circle cx="12" cy="12" r="9" />
                     <path d="M12 7v5l3 2" />
                   </Icon>
+                ) : item.key === "settings" ? (
+                  <Icon size={18}>
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4" />
+                  </Icon>
                 ) : (
                   <Icon size={18}>
                     <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />

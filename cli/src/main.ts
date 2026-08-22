@@ -30,6 +30,12 @@ Commands:
   workflow disable <name>      Disable a workflow
   workflow remove <name>       Delete a workflow
   computer list                List agent computers / workspaces
+  provider list                List LLM providers and connection status
+  provider set <id>            Save API key / base URL for a provider
+  provider clear <id>          Remove saved credentials for a provider
+  provider test [model]        Send a tiny chat to verify the model works
+  model get                    Show default model
+  model set <provider:model>   Set default model (e.g. openrouter:openai/gpt-4o-mini)
   start                        Start local API server (for the web UI)
   version                      Print version
   help                         Show this help
@@ -43,6 +49,8 @@ Options:
   --cron <expr>                Cron trigger (5-field) for workflow create
   --webhook <path>             Webhook trigger path for workflow create
   --secret <value>             Optional webhook secret
+  --key <api-key>              API key for provider set
+  --base-url <url>             Base URL for provider set (OpenAI-compatible)
   --home <path>                Override SORA_HOME
   --port <n>                   API port for sora start (default 7420)
   --yes, -y                    Auto-approve permission prompts
@@ -50,6 +58,9 @@ Options:
 
 Examples:
   bun run sora init
+  bun run sora provider set openrouter --key sk-or-...
+  bun run sora model set openrouter:openai/gpt-4o-mini
+  bun run sora provider test
   bun run sora start
   bun run sora start --yes
   bun run sora skill install ./examples/skills/github-review
@@ -115,6 +126,16 @@ export async function main(argv: string[]): Promise<void> {
 
     case "computer": {
       await handleComputer(args, flags);
+      return;
+    }
+
+    case "provider": {
+      await handleProvider(args, flags);
+      return;
+    }
+
+    case "model": {
+      await handleModel(args, flags);
       return;
     }
 
@@ -605,6 +626,173 @@ async function handleAgent(args: string[], flags: Flags): Promise<void> {
     }
 
     throw new Error(`Unknown agent command: ${sub}`);
+  } finally {
+    services.runtime.close();
+  }
+}
+
+async function handleProvider(args: string[], flags: Flags): Promise<void> {
+  const sub = args[0];
+  const rest = args.slice(1);
+
+  if (!sub || sub === "help") {
+    console.log(`Provider commands:
+  sora provider list
+  sora provider set <id> --key <api-key> [--base-url <url>]
+  sora provider clear <id>
+  sora provider test [provider:model]
+
+Providers: openai · openrouter · ollama · mock`);
+    return;
+  }
+
+  try {
+    createSoraServices(servicesOptions(flags)).runtime.close();
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("not initialized")) {
+      initSora();
+    } else {
+      throw error;
+    }
+  }
+
+  const services = createSoraServices(servicesOptions(flags));
+  try {
+    if (sub === "list") {
+      const status = services.providers.status(services.runtime.secrets);
+      if (flags.json) {
+        console.log(
+          JSON.stringify(
+            {
+              defaultModel: services.runtime.config.defaultModel,
+              providers: status,
+            },
+            null,
+            2,
+          ),
+        );
+        return;
+      }
+      console.log(`Default model: ${services.runtime.config.defaultModel}`);
+      for (const p of status) {
+        const state = p.configured
+          ? p.fromEnv
+            ? "env"
+            : p.hint ?? "ok"
+          : "not configured";
+        console.log(
+          `${p.id.padEnd(12)} ${state.padEnd(16)} ${p.description}`,
+        );
+      }
+      return;
+    }
+
+    if (sub === "set") {
+      const id = rest[0];
+      if (!id) throw new Error("Usage: sora provider set <id> --key <api-key>");
+      const key =
+        typeof flags.key === "string"
+          ? flags.key
+          : typeof flags["api-key"] === "string"
+            ? flags["api-key"]
+            : undefined;
+      const baseUrl =
+        typeof flags["base-url"] === "string"
+          ? flags["base-url"]
+          : typeof flags.baseUrl === "string"
+            ? flags.baseUrl
+            : undefined;
+      if (key === undefined && baseUrl === undefined) {
+        throw new Error("Provide --key and/or --base-url");
+      }
+      services.runtime.setProviderCredential(id, {
+        apiKey: key,
+        baseUrl,
+      });
+      services.reloadProviders();
+      console.log(`Saved credentials for ${id} → ${services.runtime.paths.secrets}`);
+      return;
+    }
+
+    if (sub === "clear") {
+      const id = rest[0];
+      if (!id) throw new Error("Usage: sora provider clear <id>");
+      services.runtime.clearProviderCredential(id);
+      services.reloadProviders();
+      console.log(`Cleared credentials for ${id}`);
+      return;
+    }
+
+    if (sub === "test") {
+      const model =
+        rest[0] ?? services.runtime.config.defaultModel;
+      const { provider, model: modelId } = services.providers.resolve(model);
+      const response = await provider.chat({
+        model: modelId,
+        messages: [{ role: "user", content: "Reply with exactly: sora-ok" }],
+        maxTokens: 32,
+      });
+      if (flags.json) {
+        console.log(
+          JSON.stringify(
+            { ok: true, model, reply: response.message.content },
+            null,
+            2,
+          ),
+        );
+      } else {
+        console.log(`ok · ${model}`);
+        console.log(response.message.content ?? "");
+      }
+      return;
+    }
+
+    throw new Error(`Unknown provider command: ${sub}`);
+  } finally {
+    services.runtime.close();
+  }
+}
+
+async function handleModel(args: string[], flags: Flags): Promise<void> {
+  const sub = args[0];
+  const rest = args.slice(1);
+
+  if (!sub || sub === "help") {
+    console.log(`Model commands:
+  sora model get
+  sora model set <provider:model>`);
+    return;
+  }
+
+  try {
+    createSoraServices(servicesOptions(flags)).runtime.close();
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("not initialized")) {
+      initSora();
+    } else {
+      throw error;
+    }
+  }
+
+  const services = createSoraServices(servicesOptions(flags));
+  try {
+    if (sub === "get") {
+      const model = services.runtime.config.defaultModel;
+      if (flags.json) console.log(JSON.stringify({ defaultModel: model }));
+      else console.log(model);
+      return;
+    }
+
+    if (sub === "set") {
+      const model = rest[0];
+      if (!model) throw new Error("Usage: sora model set <provider:model>");
+      services.providers.resolve(model);
+      services.runtime.updateConfig({ defaultModel: model });
+      console.log(`Default model → ${model}`);
+      return;
+    }
+
+    throw new Error(`Unknown model command: ${sub}`);
   } finally {
     services.runtime.close();
   }
