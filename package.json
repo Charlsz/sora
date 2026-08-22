@@ -4,9 +4,10 @@
   "private": true,
   "description": "Open-source AI agent runtime and workspace",
   "type": "module",
-  "workspaces": ["packages/*", "cli"],
+  "workspaces": ["packages/*", "cli", "apps/*"],
   "scripts": {
     "sora": "bun cli/src/bin.ts",
+    "dev:web": "bun --filter @sora/web dev",
     "test": "bun test",
     "typecheck": "bunx tsc --noEmit -p tsconfig.json"
   },

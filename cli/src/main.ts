@@ -4,6 +4,7 @@ import {
   initSora,
   type CreateSoraServicesOptions,
 } from "@sora/agents";
+import { startApiServer } from "@sora/api";
 import { resolve } from "node:path";
 
 const HELP = `Sora — local AI agent runtime
@@ -29,6 +30,7 @@ Commands:
   workflow disable <name>      Disable a workflow
   workflow remove <name>       Delete a workflow
   computer list                List agent computers / workspaces
+  start                        Start local API server (for the web UI)
   version                      Print version
   help                         Show this help
 
@@ -42,11 +44,13 @@ Options:
   --webhook <path>             Webhook trigger path for workflow create
   --secret <value>             Optional webhook secret
   --home <path>                Override SORA_HOME
+  --port <n>                   API port for sora start (default 7420)
   --yes, -y                    Auto-approve permission prompts
   --json                       Machine-readable output where supported
 
 Examples:
   bun run sora init
+  bun run sora start --yes
   bun run sora skill install ./examples/skills/github-review
   bun run sora agent create klaus --description "Executive assistant"
   bun run sora workflow create morning-brief --agent klaus --task "Prepare my morning briefing" --cron "0 7 * * 1-5"
@@ -113,6 +117,11 @@ export async function main(argv: string[]): Promise<void> {
       return;
     }
 
+    case "start": {
+      await handleStart(flags);
+      return;
+    }
+
     default:
       console.error(`Unknown command: ${command}`);
       console.log(HELP);
@@ -126,6 +135,54 @@ function servicesOptions(flags: Flags): CreateSoraServicesOptions {
       autoApprove: Boolean(flags.yes || flags.y),
     },
   };
+}
+
+async function handleStart(flags: Flags): Promise<void> {
+  try {
+    createSoraServices(servicesOptions(flags)).runtime.close();
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("not initialized")) {
+      initSora();
+    } else {
+      throw error;
+    }
+  }
+
+  // Default auto-approve for local UI demos unless explicitly disabled
+  const autoApprove =
+    flags.yes || flags.y || process.env.SORA_AUTO_APPROVE !== "0";
+
+  const services = createSoraServices({
+    permissions: { autoApprove: Boolean(autoApprove) },
+  });
+
+  const port =
+    typeof flags.port === "string" ? Number(flags.port) : 7420;
+
+  const staticDir = resolve(
+    import.meta.dir,
+    "../../apps/web/dist",
+  );
+
+  const server = startApiServer({
+    services,
+    port: Number.isFinite(port) ? port : 7420,
+    staticDir,
+  });
+
+  console.log(`Sora API listening on ${server.url}`);
+  console.log(`UI: ${server.url} (build apps/web or use bun run dev:web)`);
+  console.log("Press Ctrl+C to stop");
+
+  const shutdown = () => {
+    server.stop();
+    process.exit(0);
+  };
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+
+  // Keep process alive
+  await new Promise(() => {});
 }
 
 async function handleSkill(args: string[], flags: Flags): Promise<void> {

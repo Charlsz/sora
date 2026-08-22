@@ -56,7 +56,7 @@ The `openai-compatible` transport covers OpenAI, OpenRouter, Ollama (OpenAI mode
 3. Delegation + agent messaging + routing — done
 4. Skills — done
 5. Workflows — done
-6. UI
+6. UI — done (minimal workspace)
 7. Browser computer
 8. Plugins
 

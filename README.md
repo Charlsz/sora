@@ -50,11 +50,25 @@ State lives in `~/.sora` (override with `SORA_HOME`):
 | `@sora/protocol`    | Envelopes + AgentRouter            |
 | `@sora/skills`      | Shared skill format + registry     |
 | `@sora/workflows`   | Triggers + workflow engine         |
+| `@sora/api`         | Local HTTP + SSE API               |
 | `@sora/agents`      | Agents + runner                    |
 | `@sora/cli`         | CLI                                |
+| `@sora/web`         | Agent workspace UI                 |
 
 See [docs/architecture.md](docs/architecture.md).
 
+## Web UI
+
+```bash
+# terminal 1
+bun run sora start --yes
+
+# terminal 2
+bun run dev:web
+```
+
+Open http://localhost:5173 — agents, chat, tools/skills context, live tool events.
+
 ## Status
 
-Workflows — manual, cron, and webhook triggers execute through the agent runtime.
+Workspace UI consumes the local API over HTTP + SSE.

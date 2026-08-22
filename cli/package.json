@@ -10,6 +10,7 @@
     "start": "bun run ./src/bin.ts"
   },
   "dependencies": {
-    "@sora/agents": "workspace:*"
+    "@sora/agents": "workspace:*",
+    "@sora/api": "workspace:*"
   }
 }

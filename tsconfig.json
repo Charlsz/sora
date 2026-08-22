@@ -24,7 +24,8 @@
       "@sora/permissions": ["./packages/permissions/src/index.ts"],
       "@sora/protocol": ["./packages/protocol/src/index.ts"],
       "@sora/skills": ["./packages/skills/src/index.ts"],
-      "@sora/workflows": ["./packages/workflows/src/index.ts"]
+      "@sora/workflows": ["./packages/workflows/src/index.ts"],
+      "@sora/api": ["./packages/api/src/index.ts"]
     }
   },
   "include": ["packages/*/src/**/*", "cli/src/**/*", "tests/**/*"]
