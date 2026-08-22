@@ -50,4 +50,16 @@ describe("LocalComputer", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  test("rejects traversal in terminal commands", async () => {
+    const root = mkdtempSync(join(tmpdir(), "sora-pc-"));
+    try {
+      const computer = new LocalComputer({ workspaceRoot: root });
+      await expect(computer.terminal.exec("cd .. && dir")).rejects.toThrow(
+        /traversal|absolute/i,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

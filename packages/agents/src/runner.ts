@@ -28,6 +28,8 @@ export type RunAgentResult = {
 
 export class AgentRunner {
   #delegation: DelegationService | null = null;
+  /** Nested run refcounts per agent id (delegation-safe status). */
+  #activeRuns = new Map<string, number>();
 
   constructor(
     private readonly agents: AgentStore,
@@ -48,7 +50,7 @@ export class AgentRunner {
     const agent = this.agents.requireBySlugOrName(input.agent);
     const maxToolRounds = input.maxToolRounds ?? 5;
 
-    this.agents.setStatus(agent.id, "running");
+    this.#beginRun(agent.id);
     await this.events.emit(
       "agent.started",
       { agentId: agent.id, slug: agent.slug, prompt: input.prompt },
@@ -194,7 +196,7 @@ export class AgentRunner {
         });
       }
 
-      this.agents.setStatus(agent.id, "idle");
+      this.#endRun(agent.id, "idle");
       await this.events.emit(
         "agent.completed",
         { agentId: agent.id, slug: agent.slug, reply },
@@ -208,7 +210,7 @@ export class AgentRunner {
         toolCalls: toolCallLog,
       };
     } catch (error) {
-      this.agents.setStatus(agent.id, "error");
+      this.#endRun(agent.id, "error");
       const message = error instanceof Error ? error.message : String(error);
       await this.events.emit(
         "agent.failed",
@@ -219,6 +221,23 @@ export class AgentRunner {
     }
   }
 
+  #beginRun(agentId: string): void {
+    const next = (this.#activeRuns.get(agentId) ?? 0) + 1;
+    this.#activeRuns.set(agentId, next);
+    this.agents.setStatus(agentId, "running");
+  }
+
+  #endRun(agentId: string, terminal: "idle" | "error"): void {
+    const next = (this.#activeRuns.get(agentId) ?? 1) - 1;
+    if (next <= 0) {
+      this.#activeRuns.delete(agentId);
+      this.agents.setStatus(agentId, terminal);
+    } else {
+      this.#activeRuns.set(agentId, next);
+      this.agents.setStatus(agentId, "running");
+    }
+  }
+
   #systemPrompt(agent: Agent, memories: string[]): string {
     const workspace = this.paths.agent(agent.slug).workspace;
     const parts = [
@@ -226,7 +245,8 @@ export class AgentRunner {
       `Agent slug: ${agent.slug}`,
       `Workspace: ${workspace}`,
       `Capabilities: ${agent.capabilities.join(", ") || "general"}`,
-      "You may only access files and commands inside your workspace.",
+      "Filesystem tools are confined to your workspace.",
+      "Terminal commands run with workspace cwd and best-effort path guards; do not attempt to escape the workspace.",
     ];
     if (memories.length) {
       parts.push("Relevant memory:\n- " + memories.join("\n- "));
@@ -249,6 +269,15 @@ export class AgentRunner {
   }
 
   async #executeTool(agent: Agent, name: string, argsJson: string) {
+    const allowed = new Set(agent.tools.map((t) => t.name));
+    if (!allowed.has(name)) {
+      return {
+        ok: false,
+        output: "",
+        error: `Tool "${name}" is not allowed for agent "${agent.slug}"`,
+      };
+    }
+
     let tool: Tool;
     try {
       tool = this.tools.get(name);
@@ -257,6 +286,14 @@ export class AgentRunner {
         ok: false,
         output: "",
         error: `Tool "${name}" is not registered`,
+      };
+    }
+
+    if (name === "delegate_task" && !this.#delegation) {
+      return {
+        ok: false,
+        output: "",
+        error: "Delegation service is not configured on this runner",
       };
     }
 

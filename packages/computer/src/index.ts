@@ -5,7 +5,7 @@ export {
   LocalComputer,
   type LocalComputerOptions,
 } from "./local.ts";
-export { LocalTerminal } from "./terminal.ts";
+export { LocalTerminal, assertCommandWorkspaceSafe } from "./terminal.ts";
 export type {
   Browser,
   BrowserNavigateResult,

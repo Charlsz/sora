@@ -2,7 +2,7 @@
 
 Local-first AI agent runtime and workspace.
 
-Sora is infrastructure for creating, running, and coordinating persistent AI agents — not a chat UI wrapper.
+Sora is infrastructure for creating, running, and coordinating persistent AI agents.
 
 ## Requirements
 

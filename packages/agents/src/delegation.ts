@@ -17,7 +17,7 @@ export type DelegationServiceOptions = {
 
 /**
  * Routes and executes cross-agent work.
- * Depth-limited to prevent recursive delegation loops.
+ * Depth-limited and cycle-safe via an ancestor agent-id chain.
  */
 export class DelegationService {
   readonly router = new AgentRouter();
@@ -26,6 +26,7 @@ export class DelegationService {
   #events: EventBus;
   #maxDepth: number;
   #depth = 0;
+  #chain: string[] = [];
 
   constructor(options: DelegationServiceOptions) {
     this.#agents = options.agents;
@@ -41,6 +42,8 @@ export class DelegationService {
       );
     }
 
+    const excludeAgentIds = [...new Set([...this.#chain, request.fromAgentId])];
+
     const candidates = this.#agents.list().map((a) => ({
       id: a.id,
       slug: a.slug,
@@ -52,13 +55,19 @@ export class DelegationService {
     const match = this.router.route(candidates, {
       task: request.task,
       requiredCapabilities: request.requiredCapabilities,
-      excludeAgentIds: [request.fromAgentId],
+      excludeAgentIds,
       prefer: request.prefer,
     });
 
     if (!match) {
       throw new Error(
         `No suitable agent found for task: ${request.task}`,
+      );
+    }
+
+    if (excludeAgentIds.includes(match.agent.id)) {
+      throw new Error(
+        `Delegation cycle rejected: ${request.fromAgentSlug} → ${match.agent.slug}`,
       );
     }
 
@@ -76,6 +85,7 @@ export class DelegationService {
     );
 
     this.#depth += 1;
+    this.#chain.push(request.fromAgentId);
     let run: RunAgentResult;
     try {
       run = await this.#runner.run({
@@ -83,6 +93,7 @@ export class DelegationService {
         prompt: request.task,
       });
     } finally {
+      this.#chain.pop();
       this.#depth -= 1;
     }
 
