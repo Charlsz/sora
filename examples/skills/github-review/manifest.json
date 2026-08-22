@@ -1,0 +1,7 @@
+{
+  "name": "github-review",
+  "description": "Reviews a local repository workspace and writes a structured review report",
+  "version": "0.1.0",
+  "tools": ["list_dir", "read_file", "write_file", "terminal"],
+  "tags": ["review", "git", "repository"]
+}

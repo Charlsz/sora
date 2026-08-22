@@ -17,6 +17,7 @@
     "@sora/models": "workspace:*",
     "@sora/permissions": "workspace:*",
     "@sora/protocol": "workspace:*",
+    "@sora/skills": "workspace:*",
     "@sora/tools": "workspace:*"
   }
 }

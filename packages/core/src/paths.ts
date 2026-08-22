@@ -15,6 +15,8 @@ export function getPaths(home = getSoraHome()) {
     databaseDir: join(home, "database"),
     database: join(home, "database", "sora.sqlite"),
     agents: join(home, "agents"),
+    /** Shared installed skills — not owned by a single agent. */
+    skills: join(home, "skills"),
     logs: join(home, "logs"),
     agent: (slug: string) => ({
       root: join(home, "agents", slug),

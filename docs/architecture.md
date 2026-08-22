@@ -54,7 +54,7 @@ The `openai-compatible` transport covers OpenAI, OpenRouter, Ollama (OpenAI mode
 1. Runtime + agents + models + tools + memory + CLI — done
 2. LocalComputer + permissions + workspace isolation — done
 3. Delegation + agent messaging + routing — done
-4. Skills
+4. Skills — done
 5. Workflows
 6. UI
 7. Browser computer
@@ -85,3 +85,7 @@ Agents never receive a host-root filesystem handle. `LocalFilesystem.resolveSafe
 ### Capability-based routing
 
 `AgentRouter` scores agents from descriptions/capabilities and optional `prefer` hints. There is no `if (task === "coding") useDev()` branch. Delegation depth is capped to prevent loops.
+
+### Shared skills
+
+Skills live in `~/.sora/skills` (shared), not inside a single agent. `@sora/skills` loads `manifest.json` + `skill.md`. Execution injects instructions into the agent's existing run and intersects tool allowlists; tools still pass through `PermissionGate` → `LocalComputer`.

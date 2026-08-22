@@ -15,6 +15,7 @@ import {
   type PermissionGate,
   type PermissionGateOptions,
 } from "@sora/permissions";
+import { SkillRegistry } from "@sora/skills";
 import {
   createBuiltinToolRegistry,
   type ToolRegistry,
@@ -26,6 +27,8 @@ import type { CreateAgentInput } from "./types.ts";
 
 export type CreateSoraServicesOptions = RuntimeOptions & {
   permissions?: PermissionGateOptions;
+  /** Extra skill discovery roots (e.g. repo examples). */
+  skillRoots?: string[];
 };
 
 export type SoraServices = {
@@ -38,6 +41,7 @@ export type SoraServices = {
   conversations: SqliteConversationStore;
   permissions: PermissionGate;
   delegation: DelegationService;
+  skills: SkillRegistry;
 };
 
 export function createSoraServices(
@@ -55,6 +59,12 @@ export function createSoraServices(
     events: runtime.events,
     ...options.permissions,
   });
+  const skills = new SkillRegistry({
+    skillsDir: runtime.paths.skills,
+    extraRoots: options.skillRoots,
+  });
+  skills.discover();
+
   const runner = new AgentRunner(
     agents,
     providers,
@@ -71,6 +81,7 @@ export function createSoraServices(
     events: runtime.events,
   });
   runner.setDelegation(delegation);
+  runner.setSkills(skills);
 
   return {
     runtime,
@@ -82,6 +93,7 @@ export function createSoraServices(
     conversations,
     permissions,
     delegation,
+    skills,
   };
 }
 

@@ -22,7 +22,8 @@
       "@sora/agents": ["./packages/agents/src/index.ts"],
       "@sora/computer": ["./packages/computer/src/index.ts"],
       "@sora/permissions": ["./packages/permissions/src/index.ts"],
-      "@sora/protocol": ["./packages/protocol/src/index.ts"]
+      "@sora/protocol": ["./packages/protocol/src/index.ts"],
+      "@sora/skills": ["./packages/skills/src/index.ts"]
     }
   },
   "include": ["packages/*/src/**/*", "cli/src/**/*", "tests/**/*"]

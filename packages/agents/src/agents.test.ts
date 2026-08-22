@@ -24,7 +24,6 @@ describe("agents", () => {
 
   afterEach(async () => {
     services.runtime.close();
-    // Windows may briefly keep SQLite handles; retry delete.
     for (let i = 0; i < 5; i++) {
       try {
         rmSync(home, { recursive: true, force: true });
@@ -107,5 +106,124 @@ describe("agents", () => {
     );
     expect(messages.some((m) => m.role === "user")).toBe(true);
     expect(messages.some((m) => m.role === "assistant")).toBe(true);
+  });
+
+  test("shared skill execution with permissions and LocalComputer", async () => {
+    const example = join(
+      import.meta.dir,
+      "..",
+      "..",
+      "..",
+      "examples",
+      "skills",
+      "github-review",
+    );
+    services.skills.install(example);
+
+    await createAgent(services, {
+      name: "Klaus",
+      description: "Executive assistant",
+    });
+    await createAgent(services, {
+      name: "Dev",
+      description: "Builds TypeScript and Bun applications",
+    });
+
+    await Bun.write(
+      join(services.runtime.paths.agent("dev").workspace, "app.ts"),
+      "export const ok = true;\n",
+    );
+
+    const klausRun = await services.runner.run({
+      agent: "klaus",
+      prompt: "/github-review",
+    });
+    expect(klausRun.skillId).toBe("github-review");
+    expect(klausRun.toolCalls.some((t) => t.name === "list_dir" && t.ok)).toBe(
+      true,
+    );
+    expect(klausRun.toolCalls.some((t) => t.name === "write_file" && t.ok)).toBe(
+      true,
+    );
+    const klausReview = await Bun.file(
+      join(services.runtime.paths.agent("klaus").workspace, "REVIEW.md"),
+    ).text();
+    expect(klausReview).toContain("Workspace Review");
+
+    const devRun = await services.runner.run({
+      agent: "dev",
+      prompt: "review the workspace",
+      skill: "github-review",
+    });
+    expect(devRun.skillId).toBe("github-review");
+    const devReview = await Bun.file(
+      join(services.runtime.paths.agent("dev").workspace, "REVIEW.md"),
+    ).text();
+    expect(devReview).toContain("app.ts");
+  });
+
+  test("skill fails when required tools are missing", async () => {
+    const example = join(
+      import.meta.dir,
+      "..",
+      "..",
+      "..",
+      "examples",
+      "skills",
+      "github-review",
+    );
+    services.skills.install(example);
+    await createAgent(services, {
+      name: "Limited",
+      tools: ["echo"],
+    });
+    await expect(
+      services.runner.run({
+        agent: "limited",
+        prompt: "/github-review",
+      }),
+    ).rejects.toThrow(/not available|requires tools/i);
+  });
+
+  test("skill respects permission deny", async () => {
+    services.runtime.close();
+    services = createSoraServices({
+      home,
+      permissions: {
+        autoApprove: false,
+        policy: {
+          default: "deny",
+          actions: {
+            "fs.read": "allow",
+            "fs.write": "deny",
+            "fs.delete": "deny",
+            "terminal.exec": "deny",
+            "http.request": "deny",
+            "browser.navigate": "deny",
+            "agent.message": "allow",
+            "agent.delegate": "deny",
+          },
+        },
+      },
+    });
+    const example = join(
+      import.meta.dir,
+      "..",
+      "..",
+      "..",
+      "examples",
+      "skills",
+      "github-review",
+    );
+    services.skills.install(example);
+    await createAgent(services, { name: "Dev" });
+
+    const result = await services.runner.run({
+      agent: "dev",
+      prompt: "/github-review",
+    });
+    expect(
+      result.toolCalls.some((t) => t.name === "write_file" && !t.ok),
+    ).toBe(true);
   });
 });

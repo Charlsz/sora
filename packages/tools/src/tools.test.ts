@@ -10,6 +10,7 @@ describe("tools", () => {
       "delete_file",
       "echo",
       "http_request",
+      "invoke_skill",
       "list_dir",
       "read_file",
       "terminal",

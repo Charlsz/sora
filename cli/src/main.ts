@@ -4,6 +4,7 @@ import {
   initSora,
   type CreateSoraServicesOptions,
 } from "@sora/agents";
+import { resolve } from "node:path";
 
 const HELP = `Sora — local AI agent runtime
 
@@ -15,6 +16,10 @@ Commands:
   agent list                   List agents
   agent create <name>          Create an agent
   agent run <name> <prompt>    Run an agent with a prompt
+  skill list                   List installed/discovered skills
+  skill get <name>             Show a skill
+  skill install <path>         Install a skill into ~/.sora/skills
+  skill remove <name>          Remove an installed skill
   computer list                List agent computers / workspaces
   version                      Print version
   help                         Show this help
@@ -22,15 +27,17 @@ Commands:
 Options:
   --model <ref>                Model for agent create (default: config/default)
   --description <text>         Description for agent create
+  --skill <name>               Activate a skill for agent run
   --home <path>                Override SORA_HOME
   --yes, -y                    Auto-approve permission prompts
   --json                       Machine-readable output where supported
 
 Examples:
   bun run sora init
-  bun run sora agent create klaus --description "Executive assistant"
+  bun run sora skill install ./examples/skills/github-review
   bun run sora agent create dev --description "Software engineer"
-  bun run sora agent run dev "write file hello.ts containing console.log('hi')" --yes
+  bun run sora agent run dev "/github-review" --yes
+  bun run sora agent run klaus "Ask Dev to create a hello world Bun server" --yes
 `;
 
 type Flags = Record<string, string | boolean>;
@@ -67,12 +74,18 @@ export async function main(argv: string[]): Promise<void> {
       });
       console.log(`Initialized Sora at ${runtime.paths.home}`);
       console.log(`Default model: ${config.defaultModel}`);
+      console.log(`Shared skills: ${runtime.paths.skills}`);
       runtime.close();
       return;
     }
 
     case "agent": {
       await handleAgent(args, flags);
+      return;
+    }
+
+    case "skill": {
+      await handleSkill(args, flags);
       return;
     }
 
@@ -94,6 +107,93 @@ function servicesOptions(flags: Flags): CreateSoraServicesOptions {
       autoApprove: Boolean(flags.yes || flags.y),
     },
   };
+}
+
+async function handleSkill(args: string[], flags: Flags): Promise<void> {
+  const sub = args[0];
+  const rest = args.slice(1);
+
+  if (!sub || sub === "help") {
+    console.log(`Skill commands:
+  sora skill list
+  sora skill get <name>
+  sora skill install <path>
+  sora skill remove <name>`);
+    return;
+  }
+
+  // Ensure workspace exists for skill home
+  try {
+    createSoraServices(servicesOptions(flags)).runtime.close();
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("not initialized")) {
+      initSora();
+    } else {
+      throw error;
+    }
+  }
+
+  const services = createSoraServices(servicesOptions(flags));
+  try {
+    if (sub === "list") {
+      const skills = services.skills.list();
+      if (flags.json) {
+        console.log(JSON.stringify(skills, null, 2));
+        return;
+      }
+      if (!skills.length) {
+        console.log(
+          "No skills installed. Try: sora skill install ./examples/skills/github-review",
+        );
+        return;
+      }
+      for (const skill of skills) {
+        console.log(
+          `${skill.id.padEnd(20)} ${skill.description}`,
+        );
+      }
+      return;
+    }
+
+    if (sub === "get") {
+      const name = rest[0];
+      if (!name) throw new Error("Usage: sora skill get <name>");
+      const skill = services.skills.get(name);
+      if (flags.json) {
+        console.log(JSON.stringify(skill, null, 2));
+        return;
+      }
+      console.log(`Name: ${skill.name}`);
+      console.log(`Id: ${skill.id}`);
+      console.log(`Description: ${skill.description}`);
+      console.log(`Tools: ${skill.tools.join(", ")}`);
+      console.log(`Path: ${skill.path}`);
+      console.log("");
+      console.log(skill.instructions);
+      return;
+    }
+
+    if (sub === "install") {
+      const path = rest[0];
+      if (!path) throw new Error("Usage: sora skill install <path>");
+      const skill = services.skills.install(resolve(path));
+      console.log(`Installed skill ${skill.id}`);
+      console.log(`Path: ${skill.path}`);
+      return;
+    }
+
+    if (sub === "remove") {
+      const name = rest[0];
+      if (!name) throw new Error("Usage: sora skill remove <name>");
+      services.skills.remove(name);
+      console.log(`Removed skill ${name}`);
+      return;
+    }
+
+    throw new Error(`Unknown skill command: ${sub}`);
+  } finally {
+    services.runtime.close();
+  }
 }
 
 async function handleComputer(args: string[], flags: Flags): Promise<void> {
@@ -125,7 +225,8 @@ async function handleAgent(args: string[], flags: Flags): Promise<void> {
     console.log(`Agent commands:
   sora agent list
   sora agent create <name> [--description ...] [--model provider:model]
-  sora agent run <name> <prompt> [--yes]`);
+  sora agent run <name> <prompt> [--skill <name>] [--yes]
+  sora agent run <name> "/skill-name optional task" --yes`);
     return;
   }
 
@@ -210,10 +311,20 @@ async function handleAgent(args: string[], flags: Flags): Promise<void> {
         });
       }
 
-      const result = await services.runner.run({ agent: name, prompt });
+      const skill =
+        typeof flags.skill === "string" ? flags.skill : undefined;
+
+      const result = await services.runner.run({
+        agent: name,
+        prompt,
+        skill,
+      });
       if (flags.json) {
         console.log(JSON.stringify(result, null, 2));
       } else {
+        if (result.skillId) {
+          console.error(`skill ${result.skillId}`);
+        }
         console.log(result.reply);
       }
       return;

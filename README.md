@@ -47,6 +47,8 @@ State lives in `~/.sora` (override with `SORA_HOME`):
 | `@sora/memory`      | Conversation + long-term memory    |
 | `@sora/computer`    | Computer abstraction + LocalComputer |
 | `@sora/permissions` | Central permission gate            |
+| `@sora/protocol`    | Envelopes + AgentRouter            |
+| `@sora/skills`      | Shared skill format + registry     |
 | `@sora/agents`      | Agents + runner                    |
 | `@sora/cli`         | CLI                                |
 
@@ -54,4 +56,4 @@ See [docs/architecture.md](docs/architecture.md).
 
 ## Status
 
-Phase 3 — Agent delegation and capability-based routing (Klaus → Dev works).
+Phase 4 — Shared skills (discovery, install, `/skill` invocation, permissions).

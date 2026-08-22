@@ -17,10 +17,6 @@
       },
       "dependencies": {
         "@sora/agents": "workspace:*",
-        "@sora/core": "workspace:*",
-        "@sora/memory": "workspace:*",
-        "@sora/models": "workspace:*",
-        "@sora/tools": "workspace:*",
       },
     },
     "packages/agents": {
@@ -33,6 +29,7 @@
         "@sora/models": "workspace:*",
         "@sora/permissions": "workspace:*",
         "@sora/protocol": "workspace:*",
+        "@sora/skills": "workspace:*",
         "@sora/tools": "workspace:*",
       },
     },
@@ -66,6 +63,13 @@
       "name": "@sora/protocol",
       "version": "0.1.0",
     },
+    "packages/skills": {
+      "name": "@sora/skills",
+      "version": "0.1.0",
+      "dependencies": {
+        "@sora/core": "workspace:*",
+      },
+    },
     "packages/tools": {
       "name": "@sora/tools",
       "version": "0.1.0",
@@ -91,6 +95,8 @@
     "@sora/permissions": ["@sora/permissions@workspace:packages/permissions"],
 
     "@sora/protocol": ["@sora/protocol@workspace:packages/protocol"],
+
+    "@sora/skills": ["@sora/skills@workspace:packages/skills"],
 
     "@sora/tools": ["@sora/tools@workspace:packages/tools"],
 

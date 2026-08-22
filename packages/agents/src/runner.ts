@@ -7,6 +7,11 @@ import type {
   ProviderRegistry,
 } from "@sora/models";
 import type { PermissionGate } from "@sora/permissions";
+import {
+  parseSkillSlashCommand,
+  type SkillInvocation,
+  type SkillRegistry,
+} from "@sora/skills";
 import type { Tool, ToolRegistry } from "@sora/tools";
 import type { DelegationService } from "./delegation.ts";
 import type { AgentStore } from "./store.ts";
@@ -17,6 +22,8 @@ export type RunAgentInput = {
   prompt: string;
   conversationId?: string;
   maxToolRounds?: number;
+  /** Activate a shared skill for this run. */
+  skill?: string;
 };
 
 export type RunAgentResult = {
@@ -24,10 +31,12 @@ export type RunAgentResult = {
   conversationId: string;
   reply: string;
   toolCalls: Array<{ name: string; ok: boolean; output: string }>;
+  skillId?: string;
 };
 
 export class AgentRunner {
   #delegation: DelegationService | null = null;
+  #skills: SkillRegistry | null = null;
   /** Nested run refcounts per agent id (delegation-safe status). */
   #activeRuns = new Map<string, number>();
 
@@ -46,24 +55,35 @@ export class AgentRunner {
     this.#delegation = delegation;
   }
 
+  setSkills(skills: SkillRegistry): void {
+    this.#skills = skills;
+  }
+
   async run(input: RunAgentInput): Promise<RunAgentResult> {
     const agent = this.agents.requireBySlugOrName(input.agent);
     const maxToolRounds = input.maxToolRounds ?? 5;
 
+    const { prompt, skillName } = this.#resolveSkillRequest(input);
+    const skillInvocation = skillName
+      ? this.#activateSkill(agent, skillName)
+      : null;
+
     this.#beginRun(agent.id);
     await this.events.emit(
       "agent.started",
-      { agentId: agent.id, slug: agent.slug, prompt: input.prompt },
+      {
+        agentId: agent.id,
+        slug: agent.slug,
+        prompt,
+        skill: skillInvocation?.skill.id,
+      },
       "agents",
     );
 
     try {
       const conversation = input.conversationId
         ? await this.conversations.get(input.conversationId)
-        : await this.conversations.create(
-            agent.id,
-            input.prompt.slice(0, 80),
-          );
+        : await this.conversations.create(agent.id, prompt.slice(0, 80));
 
       if (!conversation) {
         throw new Error(`Conversation "${input.conversationId}" not found`);
@@ -71,7 +91,7 @@ export class AgentRunner {
 
       await this.conversations.appendMessage(conversation.id, {
         role: "user",
-        content: input.prompt,
+        content: prompt,
       });
 
       const history = await this.conversations.listMessages(conversation.id);
@@ -80,11 +100,15 @@ export class AgentRunner {
         limit: 5,
       });
 
-      const toolDefs = this.#toolDefinitions(agent);
+      const toolDefs = this.#toolDefinitions(agent, skillInvocation);
       const messages: ChatMessage[] = [
         {
           role: "system",
-          content: this.#systemPrompt(agent, longTerm.map((m) => m.content)),
+          content: this.#systemPrompt(
+            agent,
+            longTerm.map((m) => m.content),
+            skillInvocation,
+          ),
         },
         ...history
           .filter((m) => m.role !== "system")
@@ -101,6 +125,7 @@ export class AgentRunner {
       const { provider, model } = this.providers.resolve(agent.model);
       const toolCallLog: RunAgentResult["toolCalls"] = [];
       let reply = "";
+      let activeSkill = skillInvocation;
 
       for (let round = 0; round <= maxToolRounds; round++) {
         const response = await provider.chat({
@@ -120,12 +145,37 @@ export class AgentRunner {
           });
 
           for (const call of assistant.toolCalls) {
+            // Mid-run skill activation via invoke_skill tool
+            if (call.name === "invoke_skill" && !activeSkill) {
+              let args: { name?: string; task?: string } = {};
+              try {
+                args = JSON.parse(call.arguments || "{}");
+              } catch {
+                args = {};
+              }
+              if (args.name) {
+                activeSkill = this.#activateSkill(agent, args.name);
+                // Refresh tool defs for subsequent rounds
+                toolDefs.length = 0;
+                toolDefs.push(...this.#toolDefinitions(agent, activeSkill));
+                messages[0] = {
+                  role: "system",
+                  content: this.#systemPrompt(
+                    agent,
+                    longTerm.map((m) => m.content),
+                    activeSkill,
+                  ),
+                };
+              }
+            }
+
             await this.events.emit(
               "agent.tool.started",
               {
                 agentId: agent.id,
                 tool: call.name,
                 arguments: call.arguments,
+                skill: activeSkill?.skill.id,
               },
               "agents",
             );
@@ -134,6 +184,7 @@ export class AgentRunner {
               agent,
               call.name,
               call.arguments,
+              activeSkill,
             );
             toolCallLog.push({
               name: call.name,
@@ -149,6 +200,7 @@ export class AgentRunner {
                 ok: result.ok,
                 output: result.output,
                 error: result.error,
+                skill: activeSkill?.skill.id,
               },
               "agents",
             );
@@ -199,7 +251,12 @@ export class AgentRunner {
       this.#endRun(agent.id, "idle");
       await this.events.emit(
         "agent.completed",
-        { agentId: agent.id, slug: agent.slug, reply },
+        {
+          agentId: agent.id,
+          slug: agent.slug,
+          reply,
+          skill: activeSkill?.skill.id,
+        },
         "agents",
       );
 
@@ -208,6 +265,7 @@ export class AgentRunner {
         conversationId: conversation.id,
         reply,
         toolCalls: toolCallLog,
+        skillId: activeSkill?.skill.id,
       };
     } catch (error) {
       this.#endRun(agent.id, "error");
@@ -219,6 +277,52 @@ export class AgentRunner {
       );
       throw error;
     }
+  }
+
+  #resolveSkillRequest(input: RunAgentInput): {
+    prompt: string;
+    skillName?: string;
+  } {
+    if (input.skill) {
+      return { prompt: input.prompt, skillName: input.skill };
+    }
+    const slash = parseSkillSlashCommand(input.prompt);
+    if (slash) {
+      return {
+        skillName: slash.skillName,
+        prompt:
+          slash.rest ||
+          `Execute the ${slash.skillName} skill on the current workspace.`,
+      };
+    }
+    return { prompt: input.prompt };
+  }
+
+  #activateSkill(agent: Agent, skillName: string): SkillInvocation {
+    if (!this.#skills) {
+      throw new Error("Skill registry is not configured on this runner");
+    }
+
+    if (agent.skills.length > 0) {
+      const needle = skillName.toLowerCase().replace(/^\/+/, "");
+      const allowed = agent.skills.some((s) => {
+        const ref = s.name.toLowerCase();
+        return (
+          ref === needle ||
+          ref.replace(/[^a-z0-9]+/g, "-") === needle.replace(/[^a-z0-9]+/g, "-")
+        );
+      });
+      if (!allowed) {
+        throw new Error(
+          `Skill "${skillName}" is not enabled for agent "${agent.slug}"`,
+        );
+      }
+    }
+
+    return this.#skills.prepareInvocation({
+      skillName,
+      agentToolNames: agent.tools.map((t) => t.name),
+    });
   }
 
   #beginRun(agentId: string): void {
@@ -238,7 +342,11 @@ export class AgentRunner {
     }
   }
 
-  #systemPrompt(agent: Agent, memories: string[]): string {
+  #systemPrompt(
+    agent: Agent,
+    memories: string[],
+    skill: SkillInvocation | null,
+  ): string {
     const workspace = this.paths.agent(agent.slug).workspace;
     const parts = [
       agent.instructions,
@@ -248,17 +356,33 @@ export class AgentRunner {
       "Filesystem tools are confined to your workspace.",
       "Terminal commands run with workspace cwd and best-effort path guards; do not attempt to escape the workspace.",
     ];
+    if (skill) {
+      parts.push(skill.promptFragment);
+    }
     if (memories.length) {
       parts.push("Relevant memory:\n- " + memories.join("\n- "));
     }
     return parts.join("\n\n");
   }
 
-  #toolDefinitions(agent: Agent): ChatToolDefinition[] {
+  #toolDefinitions(
+    agent: Agent,
+    skill: SkillInvocation | null,
+  ): ChatToolDefinition[] {
+    const allowed = new Set(
+      skill ? skill.allowedTools : agent.tools.map((t) => t.name),
+    );
+    // When no skill is active, keep invoke_skill available if the agent has it
+    if (!skill && agent.tools.some((t) => t.name === "invoke_skill")) {
+      allowed.add("invoke_skill");
+    }
+
     const defs: ChatToolDefinition[] = [];
-    for (const ref of agent.tools) {
-      if (!this.tools.has(ref.name)) continue;
-      const tool = this.tools.get(ref.name);
+    for (const name of allowed) {
+      if (!this.tools.has(name)) continue;
+      // Agent must still list the tool (except we already filtered via skill ∩ agent)
+      if (!agent.tools.some((t) => t.name === name)) continue;
+      const tool = this.tools.get(name);
       defs.push({
         name: tool.name,
         description: tool.description,
@@ -268,13 +392,26 @@ export class AgentRunner {
     return defs;
   }
 
-  async #executeTool(agent: Agent, name: string, argsJson: string) {
-    const allowed = new Set(agent.tools.map((t) => t.name));
-    if (!allowed.has(name)) {
+  async #executeTool(
+    agent: Agent,
+    name: string,
+    argsJson: string,
+    skill: SkillInvocation | null,
+  ) {
+    const agentAllowed = new Set(agent.tools.map((t) => t.name));
+    if (!agentAllowed.has(name)) {
       return {
         ok: false,
         output: "",
         error: `Tool "${name}" is not allowed for agent "${agent.slug}"`,
+      };
+    }
+
+    if (skill && name !== "invoke_skill" && !skill.allowedTools.includes(name)) {
+      return {
+        ok: false,
+        output: "",
+        error: `Tool "${name}" is not allowed by skill "${skill.skill.id}"`,
       };
     }
 

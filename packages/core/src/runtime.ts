@@ -47,6 +47,7 @@ export class SoraRuntime {
     mkdirSync(this.paths.home, { recursive: true });
     mkdirSync(this.paths.databaseDir, { recursive: true });
     mkdirSync(this.paths.agents, { recursive: true });
+    mkdirSync(this.paths.skills, { recursive: true });
     mkdirSync(this.paths.logs, { recursive: true });
 
     const config = createDefaultConfig();

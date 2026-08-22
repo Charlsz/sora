@@ -33,6 +33,7 @@ export class AgentStore {
         "echo",
         "agent_message",
         "delegate_task",
+        "invoke_skill",
         "read_file",
         "write_file",
         "list_dir",
