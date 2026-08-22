@@ -7,6 +7,10 @@ export type PermissionAction =
   | "terminal.exec"
   | "http.request"
   | "browser.navigate"
+  | "browser.click"
+  | "browser.type"
+  | "browser.screenshot"
+  | "browser.close"
   | "agent.message"
   | "agent.delegate";
 
@@ -39,6 +43,10 @@ export const DEFAULT_AGENT_POLICY: PermissionPolicy = {
     "terminal.exec": "ask",
     "http.request": "ask",
     "browser.navigate": "ask",
+    "browser.click": "ask",
+    "browser.type": "ask",
+    "browser.screenshot": "allow",
+    "browser.close": "allow",
     "agent.message": "allow",
     "agent.delegate": "ask",
   },
@@ -54,6 +62,10 @@ export const AUTO_APPROVE_POLICY: PermissionPolicy = {
     "terminal.exec": "allow",
     "http.request": "allow",
     "browser.navigate": "allow",
+    "browser.click": "allow",
+    "browser.type": "allow",
+    "browser.screenshot": "allow",
+    "browser.close": "allow",
     "agent.message": "allow",
     "agent.delegate": "allow",
   },

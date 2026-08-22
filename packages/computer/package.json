@@ -9,5 +9,8 @@
   },
   "scripts": {
     "test": "bun test"
+  },
+  "dependencies": {
+    "playwright": "^1.51.0"
   }
 }

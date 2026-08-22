@@ -63,3 +63,18 @@ describe("LocalComputer", () => {
     }
   });
 });
+
+describe("PlaceholderBrowser", () => {
+  test("reports offline navigate", async () => {
+    process.env.SORA_BROWSER = "off";
+    const { createBrowser } = await import("../src/browser.ts");
+    const browser = createBrowser({
+      profileDir: join(tmpdir(), "sora-br-profile"),
+      workspaceRoot: mkdtempSync(join(tmpdir(), "sora-br-ws-")),
+    });
+    expect(browser.status().backend).toBe("placeholder");
+    const result = await browser.navigate("https://example.com");
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/placeholder|offline/i);
+  });
+});

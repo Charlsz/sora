@@ -41,10 +41,51 @@ export type BrowserNavigateResult = {
   message: string;
 };
 
-/** Placeholder until Phase 7 browser implementation. */
+export type BrowserActionResult = {
+  ok: boolean;
+  message: string;
+  url?: string;
+};
+
+export type BrowserScreenshotResult = {
+  ok: boolean;
+  message: string;
+  /** Workspace-relative path when saved to disk. */
+  path?: string;
+  /** PNG as base64 (no data: prefix). */
+  base64?: string;
+  width: number;
+  height: number;
+};
+
+export type BrowserStatus = {
+  backend: "playwright" | "placeholder";
+  open: boolean;
+  url: string;
+  title: string;
+  profileDir?: string;
+  headed: boolean;
+};
+
+/**
+ * Local browser computer. Prefer Playwright; placeholder when disabled.
+ * Sessions persist via userDataDir so agents can stay signed in.
+ */
 export interface Browser {
   navigate(url: string): Promise<BrowserNavigateResult>;
   content(): Promise<string>;
+  screenshot(options?: {
+    path?: string;
+    fullPage?: boolean;
+  }): Promise<BrowserScreenshotResult>;
+  click(selector: string): Promise<BrowserActionResult>;
+  type(
+    selector: string,
+    text: string,
+    options?: { clear?: boolean },
+  ): Promise<BrowserActionResult>;
+  close(): Promise<void>;
+  status(): BrowserStatus;
 }
 
 export type ComputerKind = "local" | "docker" | "cloud" | "android" | "remote";
