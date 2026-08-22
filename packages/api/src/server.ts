@@ -1,5 +1,6 @@
 import type { SoraServices } from "@sora/agents";
 import type { SoraEvent } from "@sora/core";
+import type { PermissionAskBridge } from "./permission-ask.ts";
 
 export type ApiServerOptions = {
   services: SoraServices;
@@ -7,6 +8,8 @@ export type ApiServerOptions = {
   port?: number;
   /** Serve static files from this directory (built web UI). */
   staticDir?: string;
+  /** Interactive permission prompts for the workspace UI. */
+  permissionAsk?: PermissionAskBridge;
 };
 
 export type StartedApiServer = {
@@ -21,7 +24,7 @@ export type StartedApiServer = {
 export function startApiServer(options: ApiServerOptions): StartedApiServer {
   const host = options.host ?? "127.0.0.1";
   const port = options.port ?? 7420;
-  const { services } = options;
+  const { services, permissionAsk } = options;
   const sseClients = new Set<ReadableStreamDefaultController<Uint8Array>>();
   const encoder = new TextEncoder();
 
@@ -143,6 +146,35 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
             })),
             cors,
           );
+        }
+
+        if (url.pathname === "/api/permissions/pending" && req.method === "GET") {
+          return json(permissionAsk?.list() ?? [], cors);
+        }
+
+        if (url.pathname === "/api/permissions/respond" && req.method === "POST") {
+          if (!permissionAsk) {
+            return json(
+              { error: "interactive permissions are not enabled (start without --yes)" },
+              cors,
+              400,
+            );
+          }
+          const body = (await req.json()) as {
+            requestId?: string;
+            decision?: string;
+          };
+          if (!body.requestId?.trim()) {
+            return json({ error: "requestId is required" }, cors, 400);
+          }
+          if (body.decision !== "allow" && body.decision !== "deny") {
+            return json({ error: "decision must be allow or deny" }, cors, 400);
+          }
+          const ok = permissionAsk.respond(body.requestId, body.decision);
+          if (!ok) {
+            return json({ error: "unknown or expired permission request" }, cors, 404);
+          }
+          return json({ ok: true, requestId: body.requestId, decision: body.decision }, cors);
         }
 
         // Static UI

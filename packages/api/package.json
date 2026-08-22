@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@sora/agents": "workspace:*",
-    "@sora/core": "workspace:*"
+    "@sora/core": "workspace:*",
+    "@sora/permissions": "workspace:*"
   }
 }

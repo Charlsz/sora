@@ -4,7 +4,7 @@ import {
   initSora,
   type CreateSoraServicesOptions,
 } from "@sora/agents";
-import { startApiServer } from "@sora/api";
+import { PermissionAskBridge, startApiServer } from "@sora/api";
 import { resolve } from "node:path";
 
 const HELP = `Sora — local AI agent runtime
@@ -50,6 +50,7 @@ Options:
 
 Examples:
   bun run sora init
+  bun run sora start
   bun run sora start --yes
   bun run sora skill install ./examples/skills/github-review
   bun run sora agent create klaus --description "Executive assistant"
@@ -148,13 +149,23 @@ async function handleStart(flags: Flags): Promise<void> {
     }
   }
 
-  // Default auto-approve for local UI demos unless explicitly disabled
+  // Interactive ask by default so the workspace UI can approve tools.
+  // Pass --yes (or SORA_AUTO_APPROVE=1) for headless auto-approve.
   const autoApprove =
-    flags.yes || flags.y || process.env.SORA_AUTO_APPROVE !== "0";
+    Boolean(flags.yes || flags.y) ||
+    process.env.SORA_AUTO_APPROVE === "1" ||
+    process.env.SORA_AUTO_APPROVE === "true";
 
   const services = createSoraServices({
-    permissions: { autoApprove: Boolean(autoApprove) },
+    permissions: { autoApprove },
   });
+
+  const permissionAsk = autoApprove
+    ? undefined
+    : new PermissionAskBridge(services.runtime.events);
+  if (permissionAsk) {
+    services.permissions.setAsk(permissionAsk.createAskHandler());
+  }
 
   const port =
     typeof flags.port === "string" ? Number(flags.port) : 7420;
@@ -168,10 +179,16 @@ async function handleStart(flags: Flags): Promise<void> {
     services,
     port: Number.isFinite(port) ? port : 7420,
     staticDir,
+    permissionAsk,
   });
 
   console.log(`Sora API listening on ${server.url}`);
   console.log(`UI: ${server.url} (build apps/web or use bun run dev:web)`);
+  console.log(
+    autoApprove
+      ? "Permissions: auto-approve (--yes)"
+      : "Permissions: interactive (approve in the UI)",
+  );
   console.log("Press Ctrl+C to stop");
 
   const shutdown = () => {

@@ -38,6 +38,16 @@ export type ConversationMessage = {
   createdAt: string;
 };
 
+export type PendingPermission = {
+  requestId: string;
+  agentId: string;
+  agentSlug: string;
+  action: string;
+  resource: string;
+  detail?: Record<string, unknown>;
+  createdAt: string;
+};
+
 export type SoraEvent = {
   id: string;
   type: string;
@@ -98,8 +108,17 @@ export const soraApi = {
     api<ConversationMessage[]>(`/api/conversations/${id}/messages`),
   skills: () => api<Skill[]>("/api/skills"),
   workflows: () => api<Workflow[]>("/api/workflows"),
+  runWorkflow: (slug: string) =>
+    api<unknown>(`/api/workflows/${slug}/run`, { method: "POST", body: "{}" }),
   tools: () =>
     api<Array<{ name: string; description: string }>>("/api/tools"),
+  pendingPermissions: () =>
+    api<PendingPermission[]>("/api/permissions/pending"),
+  respondPermission: (requestId: string, decision: "allow" | "deny") =>
+    api<{ ok: boolean }>("/api/permissions/respond", {
+      method: "POST",
+      body: JSON.stringify({ requestId, decision }),
+    }),
 };
 
 export function connectEvents(
@@ -113,7 +132,6 @@ export function connectEvents(
       // ignore
     }
   };
-  // Named events from server
   const handler = (e: MessageEvent) => {
     try {
       onEvent(JSON.parse(e.data) as SoraEvent);
@@ -130,6 +148,7 @@ export function connectEvents(
     "agent.tool.failed",
     "agent.delegated",
     "permission.requested",
+    "permission.pending",
     "workflow.started",
     "workflow.completed",
     "workflow.failed",

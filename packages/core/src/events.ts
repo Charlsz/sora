@@ -18,6 +18,7 @@ export type SoraEventType =
   | "workflow.failed"
   | "workflow.completed"
   | "permission.requested"
+  | "permission.pending"
   | "log";
 
 export type SoraEvent = {

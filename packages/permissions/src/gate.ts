@@ -45,6 +45,11 @@ export class PermissionGate {
     return [...this.#audit];
   }
 
+  /** Replace or clear the interactive ask handler (e.g. API bridge). */
+  setAsk(ask?: AskHandler): void {
+    this.#ask = ask;
+  }
+
   resolve(action: PermissionRequest["action"]): PermissionResolution {
     const decision = this.policy.actions[action] ?? this.policy.default;
     return {

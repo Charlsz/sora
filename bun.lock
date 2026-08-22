@@ -58,6 +58,7 @@
       "dependencies": {
         "@sora/agents": "workspace:*",
         "@sora/core": "workspace:*",
+        "@sora/permissions": "workspace:*",
       },
     },
     "packages/computer": {
