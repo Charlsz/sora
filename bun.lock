@@ -31,6 +31,7 @@
         "@sora/protocol": "workspace:*",
         "@sora/skills": "workspace:*",
         "@sora/tools": "workspace:*",
+        "@sora/workflows": "workspace:*",
       },
     },
     "packages/computer": {

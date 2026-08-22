@@ -20,6 +20,10 @@ import {
   createBuiltinToolRegistry,
   type ToolRegistry,
 } from "@sora/tools";
+import {
+  WorkflowEngine,
+  WorkflowStore,
+} from "@sora/workflows";
 import { DelegationService } from "./delegation.ts";
 import { AgentRunner } from "./runner.ts";
 import { AgentStore } from "./store.ts";
@@ -42,6 +46,8 @@ export type SoraServices = {
   permissions: PermissionGate;
   delegation: DelegationService;
   skills: SkillRegistry;
+  workflows: WorkflowStore;
+  workflowEngine: WorkflowEngine;
 };
 
 export function createSoraServices(
@@ -83,6 +89,15 @@ export function createSoraServices(
   runner.setDelegation(delegation);
   runner.setSkills(skills);
 
+  const workflows = new WorkflowStore(runtime.db);
+  const workflowEngine = new WorkflowEngine({
+    store: workflows,
+    events: runtime.events,
+    executor: {
+      run: (input) => runner.run(input),
+    },
+  });
+
   return {
     runtime,
     agents,
@@ -94,6 +109,8 @@ export function createSoraServices(
     permissions,
     delegation,
     skills,
+    workflows,
+    workflowEngine,
   };
 }
 

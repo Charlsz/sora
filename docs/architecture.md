@@ -55,7 +55,7 @@ The `openai-compatible` transport covers OpenAI, OpenRouter, Ollama (OpenAI mode
 2. LocalComputer + permissions + workspace isolation — done
 3. Delegation + agent messaging + routing — done
 4. Skills — done
-5. Workflows
+5. Workflows — done
 6. UI
 7. Browser computer
 8. Plugins
@@ -89,3 +89,7 @@ Agents never receive a host-root filesystem handle. `LocalFilesystem.resolveSafe
 ### Shared skills
 
 Skills live in `~/.sora/skills` (shared), not inside a single agent. `@sora/skills` loads `manifest.json` + `skill.md`. Execution injects instructions into the agent's existing run and intersects tool allowlists; tools still pass through `PermissionGate` → `LocalComputer`.
+
+### Workflows
+
+`@sora/workflows` is a generic engine: triggers (manual, cron, webhook, event) fire workflows that always execute through a `WorkflowExecutor` bound to `AgentRunner`. Cron is one trigger implementation, not the engine itself.

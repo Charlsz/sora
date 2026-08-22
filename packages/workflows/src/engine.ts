@@ -45,6 +45,15 @@ export class WorkflowEngine {
     this.#triggers.set(handler.type, handler);
   }
 
+  /** Update next_run_at for a workflow based on its trigger. */
+  refreshSchedule(slug: string, from = new Date()): void {
+    const workflow = this.store.requireBySlug(slug);
+    const next = this.#computeNextRun(workflow, from);
+    this.store.updateSchedule(workflow.id, {
+      nextRunAt: next?.toISOString() ?? null,
+    });
+  }
+
   /** Run a workflow immediately (manual). */
   async run(
     slug: string,

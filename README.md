@@ -49,6 +49,7 @@ State lives in `~/.sora` (override with `SORA_HOME`):
 | `@sora/permissions` | Central permission gate            |
 | `@sora/protocol`    | Envelopes + AgentRouter            |
 | `@sora/skills`      | Shared skill format + registry     |
+| `@sora/workflows`   | Triggers + workflow engine         |
 | `@sora/agents`      | Agents + runner                    |
 | `@sora/cli`         | CLI                                |
 
@@ -56,4 +57,4 @@ See [docs/architecture.md](docs/architecture.md).
 
 ## Status
 
-Phase 4 — Shared skills (discovery, install, `/skill` invocation, permissions).
+Workflows — manual, cron, and webhook triggers execute through the agent runtime.

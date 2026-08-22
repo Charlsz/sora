@@ -20,6 +20,14 @@ Commands:
   skill get <name>             Show a skill
   skill install <path>         Install a skill into ~/.sora/skills
   skill remove <name>          Remove an installed skill
+  workflow list                List workflows
+  workflow create <name>       Create a workflow
+  workflow run <name>          Run a workflow manually
+  workflow trigger <path>      Dispatch webhook workflows by path
+  workflow tick                Evaluate due cron workflows once
+  workflow enable <name>       Enable a workflow
+  workflow disable <name>      Disable a workflow
+  workflow remove <name>       Delete a workflow
   computer list                List agent computers / workspaces
   version                      Print version
   help                         Show this help
@@ -27,7 +35,12 @@ Commands:
 Options:
   --model <ref>                Model for agent create (default: config/default)
   --description <text>         Description for agent create
-  --skill <name>               Activate a skill for agent run
+  --skill <name>               Activate a skill for agent/workflow run
+  --agent <slug>               Agent for workflow create
+  --task <text>                Task prompt for workflow create
+  --cron <expr>                Cron trigger (5-field) for workflow create
+  --webhook <path>             Webhook trigger path for workflow create
+  --secret <value>             Optional webhook secret
   --home <path>                Override SORA_HOME
   --yes, -y                    Auto-approve permission prompts
   --json                       Machine-readable output where supported
@@ -35,9 +48,10 @@ Options:
 Examples:
   bun run sora init
   bun run sora skill install ./examples/skills/github-review
-  bun run sora agent create dev --description "Software engineer"
-  bun run sora agent run dev "/github-review" --yes
-  bun run sora agent run klaus "Ask Dev to create a hello world Bun server" --yes
+  bun run sora agent create klaus --description "Executive assistant"
+  bun run sora workflow create morning-brief --agent klaus --task "Prepare my morning briefing" --cron "0 7 * * 1-5"
+  bun run sora workflow run morning-brief --yes
+  bun run sora workflow trigger github/pr --yes
 `;
 
 type Flags = Record<string, string | boolean>;
@@ -86,6 +100,11 @@ export async function main(argv: string[]): Promise<void> {
 
     case "skill": {
       await handleSkill(args, flags);
+      return;
+    }
+
+    case "workflow": {
+      await handleWorkflow(args, flags);
       return;
     }
 
@@ -213,6 +232,187 @@ async function handleComputer(args: string[], flags: Flags): Promise<void> {
       console.log(`${agent.slug.padEnd(16)} local  ${workspace}`);
     }
   } finally {
+    services.runtime.close();
+  }
+}
+
+async function handleWorkflow(args: string[], flags: Flags): Promise<void> {
+  const sub = args[0];
+  const rest = args.slice(1);
+
+  if (!sub || sub === "help") {
+    console.log(`Workflow commands:
+  sora workflow list
+  sora workflow create <name> --agent <slug> --task <text> [--cron expr | --webhook path] [--skill name]
+  sora workflow run <name>
+  sora workflow trigger <path> [--secret value]
+  sora workflow tick
+  sora workflow enable|disable|remove <name>`);
+    return;
+  }
+
+  try {
+    createSoraServices(servicesOptions(flags)).runtime.close();
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("not initialized")) {
+      initSora();
+    } else {
+      throw error;
+    }
+  }
+
+  const services = createSoraServices(servicesOptions(flags));
+
+  if (!flags.quiet) {
+    services.runtime.events.on("*", (event) => {
+      if (event.type.startsWith("workflow.")) {
+        console.error(`${event.type}${event.data?.slug ? ` ${event.data.slug}` : ""}`);
+      } else if (event.type === "agent.tool.started") {
+        console.error(`→ tool ${event.data?.tool}`);
+      } else if (event.type === "agent.tool.completed") {
+        console.error(`✓ tool ${event.data?.tool}`);
+      } else if (event.type === "permission.requested") {
+        console.error(
+          `permission ${event.data?.action} → ${event.data?.decision}`,
+        );
+      }
+    });
+  }
+
+  try {
+    if (sub === "list") {
+      const items = services.workflows.list();
+      if (flags.json) {
+        console.log(JSON.stringify(items, null, 2));
+        return;
+      }
+      if (!items.length) {
+        console.log("No workflows yet.");
+        return;
+      }
+      for (const wf of items) {
+        const trig =
+          wf.trigger.type === "cron"
+            ? `cron ${wf.trigger.expression}`
+            : wf.trigger.type === "webhook"
+              ? `webhook /${wf.trigger.path}`
+              : wf.trigger.type;
+        console.log(
+          `${wf.slug.padEnd(20)} ${(wf.enabled ? "on" : "off").padEnd(4)} ${wf.agentSlug.padEnd(12)} ${trig.padEnd(24)} ${wf.task}`,
+        );
+      }
+      return;
+    }
+
+    if (sub === "create") {
+      const name = rest[0];
+      const agent = typeof flags.agent === "string" ? flags.agent : undefined;
+      const task = typeof flags.task === "string" ? flags.task : undefined;
+      if (!name || !agent || !task) {
+        throw new Error(
+          "Usage: sora workflow create <name> --agent <slug> --task <text> [--cron expr | --webhook path]",
+        );
+      }
+
+      let trigger: import("@sora/workflows").WorkflowTrigger = { type: "manual" };
+      if (typeof flags.cron === "string") {
+        trigger = { type: "cron", expression: flags.cron };
+      } else if (typeof flags.webhook === "string") {
+        trigger = {
+          type: "webhook",
+          path: flags.webhook,
+          secret: typeof flags.secret === "string" ? flags.secret : undefined,
+        };
+      }
+
+      const wf = services.workflows.create({
+        name,
+        agent,
+        task,
+        skill: typeof flags.skill === "string" ? flags.skill : undefined,
+        description:
+          typeof flags.description === "string" ? flags.description : undefined,
+        trigger,
+      });
+      services.workflowEngine.refreshSchedule(wf.slug);
+
+      if (flags.json) {
+        console.log(JSON.stringify(wf, null, 2));
+      } else {
+        console.log(`Created workflow ${wf.slug}`);
+        console.log(`Agent: ${wf.agentSlug}`);
+        console.log(`Trigger: ${wf.trigger.type}`);
+      }
+      return;
+    }
+
+    if (sub === "run") {
+      const name = rest[0];
+      if (!name) throw new Error("Usage: sora workflow run <name>");
+      const run = await services.workflowEngine.run(name);
+      if (flags.json) {
+        console.log(JSON.stringify(run, null, 2));
+      } else if (run.status === "failed") {
+        console.error(run.error);
+        process.exitCode = 1;
+      } else {
+        console.log(run.reply ?? "(no reply)");
+      }
+      return;
+    }
+
+    if (sub === "trigger") {
+      const path = rest[0];
+      if (!path) throw new Error("Usage: sora workflow trigger <path>");
+      const runs = await services.workflowEngine.handleWebhook({
+        path,
+        secret: typeof flags.secret === "string" ? flags.secret : undefined,
+      });
+      if (flags.json) {
+        console.log(JSON.stringify(runs, null, 2));
+        return;
+      }
+      if (!runs.length) {
+        console.log("No matching webhook workflows.");
+        return;
+      }
+      for (const run of runs) {
+        console.log(
+          `${run.status.padEnd(10)} ${run.id} ${run.reply ?? run.error ?? ""}`,
+        );
+      }
+      return;
+    }
+
+    if (sub === "tick") {
+      const runs = await services.workflowEngine.tick();
+      if (flags.json) {
+        console.log(JSON.stringify(runs, null, 2));
+        return;
+      }
+      console.log(`Fired ${runs.length} cron workflow(s)`);
+      return;
+    }
+
+    if (sub === "enable" || sub === "disable") {
+      const name = rest[0];
+      if (!name) throw new Error(`Usage: sora workflow ${sub} <name>`);
+      const wf = services.workflows.setEnabled(name, sub === "enable");
+      console.log(`${wf.slug} ${wf.enabled ? "enabled" : "disabled"}`);
+      return;
+    }
+
+    if (sub === "remove") {
+      const name = rest[0];
+      if (!name) throw new Error("Usage: sora workflow remove <name>");
+      services.workflows.remove(name);
+      console.log(`Removed workflow ${name}`);
+      return;
+    }
+
+    throw new Error(`Unknown workflow command: ${sub}`);
+  } finally {
+    services.workflowEngine.stopScheduler();
     services.runtime.close();
   }
 }
