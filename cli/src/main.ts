@@ -34,6 +34,8 @@ Commands:
   provider set <id>            Save API key / base URL for a provider
   provider clear <id>          Remove saved credentials for a provider
   provider test [model]        Send a tiny chat to verify the model works
+  plugin list                  List connectors (GitHub, Composio, …)
+  plugin connect <id> [app]    Start OAuth / link flow for a connector
   model get                    Show default model
   model set <provider:model>   Set default model (e.g. openrouter:openai/gpt-4o-mini)
   start                        Start local API server (for the web UI)
@@ -60,6 +62,9 @@ Examples:
   bun run sora init
   bun run sora provider set openrouter --key sk-or-...
   bun run sora model set openrouter:openai/gpt-4o-mini
+  bun run sora provider set github --key ghp_...
+  bun run sora provider set composio --key ak_...
+  bun run sora plugin connect composio github
   bun run sora provider test
   bun run sora start
   bun run sora start --yes
@@ -131,6 +136,11 @@ export async function main(argv: string[]): Promise<void> {
 
     case "provider": {
       await handleProvider(args, flags);
+      return;
+    }
+
+    case "plugin": {
+      await handlePlugin(args, flags);
       return;
     }
 
@@ -642,7 +652,8 @@ async function handleProvider(args: string[], flags: Flags): Promise<void> {
   sora provider clear <id>
   sora provider test [provider:model]
 
-Providers: openai · openrouter · ollama · mock`);
+Providers: openai · openrouter · ollama · mock
+Connector keys (same command): github · composio`);
     return;
   }
 
@@ -748,6 +759,78 @@ Providers: openai · openrouter · ollama · mock`);
     }
 
     throw new Error(`Unknown provider command: ${sub}`);
+  } finally {
+    services.runtime.close();
+  }
+}
+
+async function handlePlugin(args: string[], flags: Flags): Promise<void> {
+  const sub = args[0];
+  const rest = args.slice(1);
+
+  if (!sub || sub === "help") {
+    console.log(`Plugin commands:
+  sora plugin list
+  sora plugin connect <id> [app]
+
+Connectors: github (PAT) · composio (OAuth broker)
+Save keys with: sora provider set github|composio --key <secret>`);
+    return;
+  }
+
+  try {
+    createSoraServices(servicesOptions(flags)).runtime.close();
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("not initialized")) {
+      initSora();
+    } else {
+      throw error;
+    }
+  }
+
+  const services = createSoraServices(servicesOptions(flags));
+  try {
+    if (sub === "list") {
+      const status = services.plugins.statusAll(services.runtime.secrets);
+      if (flags.json) {
+        console.log(JSON.stringify({ plugins: status }, null, 2));
+        return;
+      }
+      for (const p of status) {
+        const state = p.configured ? p.hint ?? "ok" : "not configured";
+        console.log(
+          `${p.id.padEnd(12)} ${state.padEnd(16)} ${p.description}`,
+        );
+        console.log(`             privacy: ${p.privacy}`);
+      }
+      return;
+    }
+
+    if (sub === "connect") {
+      const id = rest[0];
+      if (!id) throw new Error("Usage: sora plugin connect <id> [app]");
+      const app = rest[1];
+      const plugin = services.plugins.get(id);
+      if (!plugin.connect) {
+        throw new Error(`Plugin "${id}" does not support connect()`);
+      }
+      const result = await plugin.connect(
+        app ?? plugin.apps[0] ?? id,
+        services.runtime.secrets,
+      );
+      if (flags.json) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      console.log(result.ok ? "ok" : "failed");
+      console.log(result.message);
+      if (result.redirectUrl) console.log(`Open: ${result.redirectUrl}`);
+      if (result.connectionId) console.log(`connection: ${result.connectionId}`);
+      if (!result.ok) process.exitCode = 1;
+      return;
+    }
+
+    throw new Error(`Unknown plugin command: ${sub}`);
   } finally {
     services.runtime.close();
   }
