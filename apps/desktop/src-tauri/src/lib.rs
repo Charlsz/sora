@@ -89,7 +89,10 @@ fn resolve_runtime(
 
 fn spawn_runtime(bin: &Path, args: &[String], cwd: Option<&Path>) -> Option<Child> {
   let mut cmd = Command::new(bin);
-  cmd.args(args).stdout(Stdio::inherit()).stderr(Stdio::inherit());
+  cmd.args(args)
+    .env("SORA_BROWSER", "on")
+    .stdout(Stdio::inherit())
+    .stderr(Stdio::inherit());
   if let Some(dir) = cwd {
     cmd.current_dir(dir);
   }

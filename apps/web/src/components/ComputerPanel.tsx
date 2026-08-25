@@ -11,14 +11,19 @@ export default function ComputerPanel({
   const [shot, setShot] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [browserEnabled, setBrowserEnabled] = useState(true);
 
   async function refresh() {
     if (!agentSlug) {
       setInfo(null);
       return;
     }
-    const data = await soraApi.computer(agentSlug);
+    const [data, config] = await Promise.all([
+      soraApi.computer(agentSlug),
+      soraApi.getConfig().catch(() => ({ browser: "on" as const })),
+    ]);
     setInfo(data);
+    setBrowserEnabled(config.browser !== "off");
   }
 
   useEffect(() => {
@@ -61,6 +66,21 @@ export default function ComputerPanel({
     }
   }
 
+  async function toggleBrowser() {
+    setBusy(true);
+    setError(null);
+    try {
+      const next = browserEnabled ? "off" : "on";
+      await soraApi.setConfig({ browser: next });
+      setBrowserEnabled(next === "on");
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const browser = info?.browser;
 
   return (
@@ -94,6 +114,20 @@ export default function ComputerPanel({
             {info.workspaceRoot}
           </p>
         )}
+        {browser?.backend !== "playwright" && browserEnabled && (
+          <p className="mt-2 text-[11px] text-ink-3">
+            Install Playwright Chromium:{" "}
+            <code className="font-mono">bunx playwright install chromium</code>
+          </p>
+        )}
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void toggleBrowser()}
+          className="mt-2 rounded-control bg-field px-2.5 py-1 text-[12px] text-ink-2 hover:bg-hover disabled:opacity-50"
+        >
+          {browserEnabled ? "Disable browser" : "Enable browser"}
+        </button>
       </div>
 
       <div className="flex gap-2">

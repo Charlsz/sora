@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { createDefaultConfig, type SoraConfig } from "./config.ts";
+import { createDefaultConfig, DEFAULT_CONFIG, type SoraConfig } from "./config.ts";
 import { openDatabase, type SoraDatabase } from "./db.ts";
 import { EventBus } from "./events.ts";
 import { getPaths, type SoraPaths } from "./paths.ts";
@@ -97,20 +97,35 @@ export class SoraRuntime {
     const raw = readFileSync(this.paths.config, "utf8");
     this.#config = JSON.parse(raw) as SoraConfig;
     this.#secrets = loadSecrets(this.paths.secrets);
+    this.#applyBrowserMode(this.#config.browser);
     this.#db ??= openDatabase(this.paths.database);
     return this.#config;
   }
 
-  updateConfig(patch: Partial<Pick<SoraConfig, "defaultModel">>): SoraConfig {
+  updateConfig(
+    patch: Partial<
+      Pick<SoraConfig, "defaultModel" | "browser" | "sandbox">
+    >,
+  ): SoraConfig {
     this.ensureInitialized();
     const next: SoraConfig = {
       ...this.config,
       ...patch,
+      sandbox: patch.sandbox
+        ? { ...(this.config.sandbox ?? DEFAULT_CONFIG.sandbox!), ...patch.sandbox }
+        : this.config.sandbox,
       updatedAt: new Date().toISOString(),
     };
     writeFileSync(this.paths.config, JSON.stringify(next, null, 2) + "\n");
     this.#config = next;
+    this.#applyBrowserMode(next.browser);
     return next;
+  }
+
+  /** Apply browser mode from config to process env for computer tools. */
+  #applyBrowserMode(mode?: SoraConfig["browser"]): void {
+    const browser = mode ?? this.config.browser ?? "on";
+    process.env.SORA_BROWSER = browser === "off" ? "off" : "on";
   }
 
   /** Upsert provider credentials. Empty apiKey string clears the stored key. */

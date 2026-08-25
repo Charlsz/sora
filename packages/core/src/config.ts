@@ -1,6 +1,13 @@
 export type SoraConfig = {
   version: number;
   defaultModel: string;
+  /** Browser automation: on tries Playwright; off uses placeholder. */
+  browser?: "on" | "off";
+  /** Optional cloud sandbox for terminal execution (opt-in). */
+  sandbox?: {
+    enabled: boolean;
+    provider: "local" | "e2b" | "daytona";
+  };
   createdAt: string;
   updatedAt: string;
 };
@@ -9,6 +16,8 @@ export const DEFAULT_CONFIG: Omit<SoraConfig, "createdAt" | "updatedAt"> = {
   version: 1,
   /** Offline until the user connects a provider. */
   defaultModel: "mock:echo",
+  browser: "on",
+  sandbox: { enabled: false, provider: "local" },
 };
 
 export function createDefaultConfig(now = new Date()): SoraConfig {
