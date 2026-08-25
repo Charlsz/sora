@@ -5,20 +5,34 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-const triple =
-  process.env.TAURI_ENV_TARGET_TRIPLE ||
-  (process.platform === "win32"
-    ? "x86_64-pc-windows-msvc"
-    : process.platform === "darwin"
-      ? process.arch === "arm64"
-        ? "aarch64-apple-darwin"
-        : "x86_64-apple-darwin"
-      : process.arch === "arm64"
-        ? "aarch64-unknown-linux-gnu"
-        : "x86_64-unknown-linux-gnu");
+function hostTriple(): string {
+  if (process.platform === "win32") return "x86_64-pc-windows-msvc";
+  if (process.platform === "darwin") {
+    return process.arch === "arm64"
+      ? "aarch64-apple-darwin"
+      : "x86_64-apple-darwin";
+  }
+  return process.arch === "arm64"
+    ? "aarch64-unknown-linux-gnu"
+    : "x86_64-unknown-linux-gnu";
+}
 
+function resolveTriple(): string {
+  const env = process.env.TAURI_ENV_TARGET_TRIPLE?.trim();
+  const host = hostTriple();
+  if (!env) return host;
+  // Ignore mismatched triples (e.g. windows env leaked onto macOS CI).
+  const ok =
+    (process.platform === "win32" && env.includes("windows")) ||
+    (process.platform === "darwin" && env.includes("apple-darwin")) ||
+    (process.platform === "linux" && env.includes("linux"));
+  return ok ? env : host;
+}
+
+const triple = resolveTriple();
 const ext = process.platform === "win32" ? ".exe" : "";
-const outDir = join("apps", "desktop", "src-tauri", "binaries");
+const root = join(import.meta.dir, "..");
+const outDir = join(root, "apps", "desktop", "src-tauri", "binaries");
 mkdirSync(outDir, { recursive: true });
 const out = join(outDir, `sora-runtime-${triple}${ext}`);
 
@@ -38,7 +52,7 @@ const result = Bun.spawnSync(
     "--outfile",
     out,
   ],
-  { cwd: join(import.meta.dir, ".."), stdout: "inherit", stderr: "inherit" },
+  { cwd: root, stdout: "inherit", stderr: "inherit" },
 );
 
 if (result.exitCode !== 0) {

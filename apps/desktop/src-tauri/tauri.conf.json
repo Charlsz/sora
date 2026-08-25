@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "dev.sora.desktop",
   "build": {
-    "beforeDevCommand": "bun --cwd ../.. --filter @sora/web dev",
+    "beforeDevCommand": "bun ../../scripts/tauri-before-dev.ts",
     "devUrl": "http://127.0.0.1:5173",
-    "beforeBuildCommand": "bun --cwd ../.. scripts/build-sidecar.ts && bun --cwd ../.. run build:web",
+    "beforeBuildCommand": "bun ../../scripts/tauri-before-build.ts",
     "frontendDist": "../web/dist"
   },
   "app": {
