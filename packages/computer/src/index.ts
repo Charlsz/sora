@@ -10,6 +10,11 @@ export {
   LocalComputer,
   type LocalComputerOptions,
 } from "./local.ts";
+export {
+  SandboxComputer,
+  createAgentComputer,
+} from "./cloud/sandbox-computer.ts";
+export { E2bTerminal, resolveE2bApiKey } from "./cloud/e2b-terminal.ts";
 export { LocalTerminal, assertCommandWorkspaceSafe } from "./terminal.ts";
 export type {
   Browser,

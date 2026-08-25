@@ -123,4 +123,17 @@ function migrate(db: Database): void {
      ON CONFLICT(key) DO UPDATE SET value = excluded.value
      WHERE CAST(meta.value AS INTEGER) < 2`,
   ).run();
+
+  // v3: demonstration steps on workflows
+  const cols = db
+    .query(`PRAGMA table_info(workflows)`)
+    .all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === "steps_json")) {
+    db.exec(`ALTER TABLE workflows ADD COLUMN steps_json TEXT`);
+  }
+  db.query(
+    `INSERT INTO meta (key, value) VALUES ('schema_version', '3')
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value
+     WHERE CAST(meta.value AS INTEGER) < 3`,
+  ).run();
 }
