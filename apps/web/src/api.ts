@@ -93,7 +93,13 @@ export type SoraEvent = {
 
 export type LiveEntry =
   | { kind: "user"; id: string; content: string }
-  | { kind: "assistant"; id: string; content: string }
+  | {
+      kind: "assistant";
+      id: string;
+      content: string;
+      streamId?: string;
+      streaming?: boolean;
+    }
   | {
       kind: "tool";
       id: string;
@@ -102,6 +108,17 @@ export type LiveEntry =
       detail?: string;
     }
   | { kind: "event"; id: string; type: string; detail?: string };
+
+export type McpServer = {
+  id: string;
+  name: string;
+  transport: "stdio" | "http";
+  command?: string;
+  args?: string[];
+  url?: string;
+  enabled?: boolean;
+  hasHeaders?: boolean;
+};
 
 const API_BASE = "";
 
@@ -126,7 +143,28 @@ export const soraApi = {
   agent: (slug: string) => api<Agent>(`/api/agents/${slug}`),
   createAgent: (body: { name: string; description?: string }) =>
     api<Agent>("/api/agents", { method: "POST", body: JSON.stringify(body) }),
-  runAgent: (slug: string, body: { prompt: string; skill?: string }) =>
+  updateAgent: (
+    slug: string,
+    body: {
+      name?: string;
+      description?: string;
+      instructions?: string;
+      model?: string;
+    },
+  ) =>
+    api<Agent>(`/api/agents/${encodeURIComponent(slug)}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  deleteAgent: (slug: string) =>
+    api<{ ok: boolean; slug: string }>(
+      `/api/agents/${encodeURIComponent(slug)}`,
+      { method: "DELETE" },
+    ),
+  runAgent: (
+    slug: string,
+    body: { prompt: string; skill?: string; conversationId?: string },
+  ) =>
     api<{
       reply: string;
       conversationId: string;
@@ -292,11 +330,37 @@ export const soraApi = {
       },
     ),
   getConfig: () =>
-    api<{ defaultModel: string; home: string }>("/api/config"),
-  setConfig: (body: { defaultModel: string }) =>
-    api<{ defaultModel: string }>("/api/config", {
+    api<{ defaultModel: string; browser: "on" | "off"; home: string }>(
+      "/api/config",
+    ),
+  setConfig: (body: { defaultModel?: string; browser?: "on" | "off" }) =>
+    api<{ defaultModel: string; browser: "on" | "off" }>("/api/config", {
       method: "PUT",
       body: JSON.stringify(body),
+    }),
+  mcpServers: () => api<{ servers: McpServer[] }>("/api/mcp"),
+  addMcpServer: (body: {
+    id: string;
+    name: string;
+    transport: "stdio" | "http";
+    command?: string;
+    args?: string[];
+    url?: string;
+    enabled?: boolean;
+  }) =>
+    api<{ ok: boolean; servers: McpServer[] }>("/api/mcp/servers", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  deleteMcpServer: (id: string) =>
+    api<{ ok: boolean; servers: McpServer[] }>(
+      `/api/mcp/servers/${encodeURIComponent(id)}`,
+      { method: "DELETE" },
+    ),
+  reloadMcp: () =>
+    api<{ ok: boolean; tools: string[] }>("/api/mcp/reload", {
+      method: "POST",
+      body: "{}",
     }),
   computer: (slug: string) =>
     api<ComputerInfo>(`/api/agents/${slug}/computer`),
@@ -340,6 +404,9 @@ export function connectEvents(
     "agent.started",
     "agent.completed",
     "agent.failed",
+    "agent.text.started",
+    "agent.text.delta",
+    "agent.text.done",
     "agent.tool.started",
     "agent.tool.completed",
     "agent.tool.failed",

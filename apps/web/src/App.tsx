@@ -44,6 +44,7 @@ export function App() {
   const [pending, setPending] = useState<PendingPermission[]>([]);
   const [nav, setNav] = useState("chats");
   const [chatTitle, setChatTitle] = useState<string | null>(null);
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const [defaultModel, setDefaultModel] = useState<string>("mock:echo");
   const [onboardingDone, setOnboardingDone] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -101,6 +102,41 @@ export function App() {
       } else if (event.type === "permission.requested") {
         // Resolved — drop matching pending by agent/action/resource if still listed
         void soraApi.pendingPermissions().then(setPending).catch(() => {});
+      } else if (event.type === "agent.text.started") {
+        const streamId = String(event.data?.streamId ?? event.id);
+        setLive((prev) => [
+          ...prev,
+          {
+            kind: "assistant",
+            id: streamId,
+            streamId,
+            content: "",
+            streaming: true,
+          },
+        ]);
+      } else if (event.type === "agent.text.delta") {
+        const streamId = String(event.data?.streamId ?? "");
+        const delta = String(event.data?.delta ?? "");
+        if (!delta) return;
+        setLive((prev) =>
+          prev.map((e) =>
+            e.kind === "assistant" && e.streamId === streamId
+              ? { ...e, content: e.content + delta }
+              : e,
+          ),
+        );
+      } else if (event.type === "agent.text.done") {
+        const streamId = String(event.data?.streamId ?? "");
+        setLive((prev) =>
+          prev.map((e) =>
+            e.kind === "assistant" && e.streamId === streamId
+              ? { ...e, streaming: false }
+              : e,
+          ),
+        );
+      } else if (event.type === "agent.completed") {
+        const cid = event.data?.conversationId;
+        if (typeof cid === "string") setConversationId(cid);
       } else if (event.type === "agent.tool.started") {
         setLive((prev) => [
           ...prev,
@@ -142,6 +178,48 @@ export function App() {
       }
     });
   }, []);
+
+  useEffect(() => {
+    if (!selected) {
+      setConversationId(null);
+      setLive([]);
+      return;
+    }
+    void (async () => {
+      try {
+        const convs = await soraApi.conversations(selected);
+        if (convs.length === 0) {
+          setConversationId(null);
+          setLive([]);
+          return;
+        }
+        const latest = convs[0]!;
+        setConversationId(latest.id);
+        setChatTitle(latest.title || null);
+        const msgs = await soraApi.messages(latest.id);
+        setLive(
+          msgs
+            .filter((m) => m.role === "user" || m.role === "assistant")
+            .map((m) =>
+              m.role === "user"
+                ? {
+                    kind: "user" as const,
+                    id: m.id,
+                    content: m.content,
+                  }
+                : {
+                    kind: "assistant" as const,
+                    id: m.id,
+                    content: m.content,
+                  },
+            ),
+        );
+      } catch {
+        setConversationId(null);
+        setLive([]);
+      }
+    })();
+  }, [selected]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
@@ -215,15 +293,33 @@ export function App() {
       const result = await soraApi.runAgent(slug, {
         prompt: clean,
         skill,
+        conversationId: conversationId ?? undefined,
       });
-      setLive((prev) => [
-        ...prev,
-        {
-          kind: "assistant",
-          id: crypto.randomUUID(),
-          content: result.reply,
-        },
-      ]);
+      setConversationId(result.conversationId);
+      setLive((prev) => {
+        const hasStreamed = prev.some(
+          (e) => e.kind === "assistant" && e.streamId,
+        );
+        if (hasStreamed) {
+          return prev.map((e) =>
+            e.kind === "assistant" && e.streamId
+              ? {
+                  ...e,
+                  content: result.reply || e.content,
+                  streaming: false,
+                }
+              : e,
+          );
+        }
+        return [
+          ...prev,
+          {
+            kind: "assistant",
+            id: crypto.randomUUID(),
+            content: result.reply,
+          },
+        ];
+      });
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -285,6 +381,7 @@ export function App() {
         onNewChat={() => {
           setLive([]);
           setChatTitle(null);
+          setConversationId(null);
           setError(null);
           setNav("chats");
         }}
@@ -398,7 +495,7 @@ export function App() {
 
               {toolRows.length > 0 && <ToolChips rows={toolRows} />}
 
-              {busy && live.every((e) => e.kind !== "assistant") && (
+              {busy && live.every((e) => e.kind !== "assistant" || !e.streaming) && (
                 <LoadingState label="Churning" />
               )}
 

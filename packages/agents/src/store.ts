@@ -39,6 +39,9 @@ export class AgentStore {
         "list_dir",
         "delete_file",
         "terminal",
+        "http_request",
+        "save_memory",
+        "search_memory",
       ]
     ).map((name) => ({ name }));
     const skills = (input.skills ?? []).map((name) => ({ name }));
@@ -157,6 +160,77 @@ export class AgentStore {
     this.db
       .query(`UPDATE agents SET status = ?, updated_at = ? WHERE id = ?`)
       .run(status, new Date().toISOString(), agentId);
+  }
+
+  requireBySlug(slug: string): Agent {
+    const agent = this.getBySlug(slug);
+    if (!agent) {
+      throw new Error(`Agent "${slug}" not found`);
+    }
+    return agent;
+  }
+
+  update(
+    slug: string,
+    patch: Partial<
+      Pick<Agent, "name" | "description" | "instructions" | "model">
+    >,
+  ): Agent {
+    const agent = this.requireBySlug(slug);
+    const updated: Agent = {
+      ...agent,
+      name: patch.name?.trim() || agent.name,
+      description: patch.description ?? agent.description,
+      instructions: patch.instructions ?? agent.instructions,
+      model: patch.model ?? agent.model,
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.db
+      .query(
+        `UPDATE agents SET name = ?, description = ?, instructions = ?, model = ?, updated_at = ? WHERE id = ?`,
+      )
+      .run(
+        updated.name,
+        updated.description,
+        updated.instructions,
+        updated.model,
+        updated.updatedAt,
+        updated.id,
+      );
+
+    const agentPaths = this.paths.agent(updated.slug);
+    writeFileSync(
+      agentPaths.config,
+      JSON.stringify(
+        {
+          id: updated.id,
+          slug: updated.slug,
+          name: updated.name,
+          description: updated.description,
+          instructions: updated.instructions,
+          model: updated.model,
+          tools: updated.tools,
+          skills: updated.skills,
+          capabilities: updated.capabilities,
+        },
+        null,
+        2,
+      ) + "\n",
+    );
+
+    void this.events.emit(
+      "agent.updated",
+      { agentId: updated.id, slug: updated.slug, name: updated.name },
+      "agents",
+    );
+
+    return updated;
+  }
+
+  delete(slug: string): void {
+    const agent = this.requireBySlug(slug);
+    this.db.query(`DELETE FROM agents WHERE id = ?`).run(agent.id);
   }
 }
 
