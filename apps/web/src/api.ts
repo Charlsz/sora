@@ -59,6 +59,17 @@ export type ProviderInfo = {
   hint: string | null;
 };
 
+export type PluginStatus = {
+  id: string;
+  name: string;
+  description: string;
+  kind: string;
+  configured: boolean;
+  hint: string | null;
+  apps: string[];
+  privacy: string;
+};
+
 export type ComputerInfo = {
   agentSlug: string;
   workspaceRoot: string;
@@ -133,10 +144,35 @@ export const soraApi = {
     api<ConversationMessage[]>(`/api/conversations/${id}/messages`),
   skills: () => api<Skill[]>("/api/skills"),
   workflows: () => api<Workflow[]>("/api/workflows"),
+  createWorkflow: (body: {
+    name: string;
+    agent: string;
+    task: string;
+    description?: string;
+    skill?: string;
+    cron?: string;
+    webhook?: string;
+    enabled?: boolean;
+  }) =>
+    api<Workflow>("/api/workflows", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   runWorkflow: (slug: string) =>
     api<unknown>(`/api/workflows/${slug}/run`, { method: "POST", body: "{}" }),
   tools: () =>
     api<Array<{ name: string; description: string }>>("/api/tools"),
+  plugins: () => api<{ plugins: PluginStatus[] }>("/api/plugins"),
+  connectPlugin: (id: string, app?: string) =>
+    api<{
+      ok: boolean;
+      message: string;
+      redirectUrl?: string;
+      connectionId?: string;
+    }>(`/api/plugins/${id}/connect`, {
+      method: "POST",
+      body: JSON.stringify({ app }),
+    }),
   pendingPermissions: () =>
     api<PendingPermission[]>("/api/permissions/pending"),
   respondPermission: (requestId: string, decision: "allow" | "deny") =>

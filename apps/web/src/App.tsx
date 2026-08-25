@@ -9,14 +9,16 @@ import {
   type Workflow,
 } from "./api";
 import ApprovalCard from "./components/ApprovalCard";
+import AgentsPanel from "./components/AgentsPanel";
 import ComputerPanel from "./components/ComputerPanel";
 import ContextCards from "./components/ContextCards";
 import LoadingState from "./components/LoadingState";
+import PluginsPanel from "./components/PluginsPanel";
 import PromptBar from "./components/PromptBar";
 import ProviderSettings from "./components/ProviderSettings";
+import RoutinesPanel from "./components/RoutinesPanel";
 import SidebarNav from "./components/SidebarNav";
 import StreamingText from "./components/StreamingText";
-import TaskRows, { type TaskRowData } from "./components/TaskRows";
 import ThinkingState from "./components/ThinkingState";
 import ToolChips, { type ToolRow } from "./components/ToolChips";
 
@@ -164,18 +166,6 @@ export function App() {
       chars: `${r.detail!.join("\n").length} chars`,
     }));
 
-  const routineRows: TaskRowData[] = workflows.map((w) => ({
-    key: w.slug,
-    label: w.name,
-    meta: w.trigger.type,
-    status: "pending",
-    details: [
-      { label: "Agent", meta: w.agentSlug },
-      { label: "Task", meta: w.task.slice(0, 48) },
-      ...(w.skill ? [{ label: "Skill", meta: w.skill }] : []),
-    ],
-  }));
-
   const recents = [
     ...agents.map((a) => ({
       id: `agent:${a.slug}`,
@@ -283,6 +273,7 @@ export function App() {
             label: "Routines",
             count: String(workflows.length),
           },
+          { key: "plugins", label: "Plugins" },
           { key: "settings", label: "Models" },
         ]}
         footerLabel={apiOk ? "Runtime online" : "Connecting…"}
@@ -321,41 +312,33 @@ export function App() {
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {error && nav !== "chats" && (
+            <p className="mb-4 rounded-control bg-red-tint px-3 py-2 text-[13px] text-red">
+              {error}
+            </p>
+          )}
           {nav === "settings" ? (
             <ProviderSettings onChanged={() => void refresh()} />
+          ) : nav === "plugins" ? (
+            <PluginsPanel onChanged={() => void refresh()} />
           ) : nav === "routines" ? (
-            <TaskRows
-              rows={routineRows}
-              onRun={(slug) => {
-                void soraApi
-                  .runWorkflow(slug)
-                  .then(() => refresh())
-                  .catch((err) =>
-                    setError(err instanceof Error ? err.message : String(err)),
-                  );
-              }}
+            <RoutinesPanel
+              agents={agents}
+              workflows={workflows}
+              onChanged={() => void refresh()}
+              onError={(message) => setError(message)}
             />
           ) : nav === "agents" ? (
-            <div className="flex flex-col gap-2">
-              {agents.map((a) => (
-                <button
-                  key={a.id}
-                  type="button"
-                  onClick={() => {
-                    setSelected(a.slug);
-                    setNav("chats");
-                  }}
-                  className={`rounded-card px-4 py-3 text-left shadow-card transition-colors ${
-                    selected === a.slug ? "bg-inset" : "bg-surface hover:bg-hover"
-                  }`}
-                >
-                  <div className="text-[14px] font-medium text-ink">{a.name}</div>
-                  <div className="mt-0.5 text-[12.5px] text-ink-2">
-                    {a.description || a.model}
-                  </div>
-                </button>
-              ))}
-            </div>
+            <AgentsPanel
+              agents={agents}
+              defaultModel={defaultModel}
+              onSelect={(slug) => {
+                setSelected(slug);
+                setNav("chats");
+              }}
+              onChanged={() => void refresh()}
+              onError={(message) => setError(message)}
+            />
           ) : (
             <div className="mx-auto flex w-full max-w-xl flex-col gap-4">
               {live.length === 0 && !busy && (
