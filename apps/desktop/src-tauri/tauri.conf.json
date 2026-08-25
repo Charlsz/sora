@@ -2,11 +2,11 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Sora",
   "version": "0.1.0",
-  "identifier": "dev.sora.app",
+  "identifier": "dev.sora.desktop",
   "build": {
-    "beforeDevCommand": "bun --filter @sora/web dev",
+    "beforeDevCommand": "bun --cwd ../.. --filter @sora/web dev",
     "devUrl": "http://127.0.0.1:5173",
-    "beforeBuildCommand": "bun run scripts/build-sidecar.ts && bun --filter @sora/web build",
+    "beforeBuildCommand": "bun --cwd ../.. scripts/build-sidecar.ts && bun --cwd ../.. run build:web",
     "frontendDist": "../web/dist"
   },
   "app": {
