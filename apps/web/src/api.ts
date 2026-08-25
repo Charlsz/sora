@@ -56,7 +56,21 @@ export type ProviderInfo = {
   fromEnv: boolean;
   needsKey: boolean;
   baseUrl: string;
+  allowCustomBaseUrl: boolean;
+  docsUrl: string | null;
   hint: string | null;
+};
+
+export type ModelOption = {
+  id: string;
+  name: string;
+  description?: string;
+};
+
+export type BrowserInstallStatus = {
+  playwrightInstalled: boolean;
+  chromiumInstalled: boolean;
+  message: string;
 };
 
 export type PluginStatus = {
@@ -196,6 +210,18 @@ export const soraApi = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  recordWorkflow: (body: {
+    conversationId: string;
+    name: string;
+    description?: string;
+    agent?: string;
+    cron?: string;
+    webhook?: string;
+  }) =>
+    api<{ ok: boolean; workflow: Workflow; steps: number }>(
+      "/api/workflows/record",
+      { method: "POST", body: JSON.stringify(body) },
+    ),
   runWorkflow: (slug: string) =>
     api<unknown>(`/api/workflows/${slug}/run`, { method: "POST", body: "{}" }),
   tools: () =>
@@ -308,9 +334,11 @@ export const soraApi = {
       body: JSON.stringify({ requestId, decision }),
     }),
   providers: () =>
-    api<{ providers: ProviderInfo[]; defaultModel: string }>(
-      "/api/providers",
-    ),
+    api<{
+      providers: ProviderInfo[];
+      models: Record<string, ModelOption[]>;
+      defaultModel: string;
+    }>("/api/providers"),
   setProvider: (
     id: string,
     body: { apiKey?: string; baseUrl?: string },
@@ -380,6 +408,12 @@ export const soraApi = {
       method: "POST",
       body: "{}",
     }),
+  browserStatus: () => api<BrowserInstallStatus>("/api/browser/status"),
+  browserInstall: () =>
+    api<{ ok: boolean; output: string; error?: string }>(
+      "/api/browser/install",
+      { method: "POST", body: "{}" },
+    ),
 };
 
 export function connectEvents(

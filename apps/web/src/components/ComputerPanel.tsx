@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { soraApi, type ComputerInfo } from "../api";
+import { soraApi, type BrowserInstallStatus, type ComputerInfo } from "../api";
 
 export default function ComputerPanel({
   agentSlug,
@@ -7,13 +7,21 @@ export default function ComputerPanel({
   agentSlug: string | null;
 }) {
   const [info, setInfo] = useState<ComputerInfo | null>(null);
+  const [browserStatus, setBrowserStatus] = useState<BrowserInstallStatus | null>(
+    null,
+  );
   const [url, setUrl] = useState("https://example.com");
   const [shot, setShot] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [installing, setInstalling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [browserEnabled, setBrowserEnabled] = useState(true);
 
   async function refresh() {
+    const [status] = await Promise.all([
+      soraApi.browserStatus().catch(() => null),
+    ]);
+    setBrowserStatus(status);
     if (!agentSlug) {
       setInfo(null);
       return;
@@ -36,6 +44,22 @@ export default function ComputerPanel({
     return (
       <p className="text-[13px] text-ink-3">Select an agent to view its computer.</p>
     );
+  }
+
+  async function installBrowser() {
+    setInstalling(true);
+    setError(null);
+    try {
+      const result = await soraApi.browserInstall();
+      if (!result.ok) {
+        setError(result.error ?? "Install failed");
+      }
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setInstalling(false);
+    }
   }
 
   async function openUrl() {
@@ -82,13 +106,14 @@ export default function ComputerPanel({
   }
 
   const browser = info?.browser;
+  const chromiumReady = browserStatus?.chromiumInstalled ?? false;
 
   return (
     <div className="flex flex-col gap-3">
       <div>
         <h2 className="text-[13px] font-semibold text-ink">Computer</h2>
         <p className="mt-0.5 text-[12px] text-ink-3">
-          Local Chromium per agent — free, no Box/CUA required.
+          Local Chromium per agent — free, no cloud VM required.
         </p>
       </div>
 
@@ -97,7 +122,7 @@ export default function ComputerPanel({
           <span className="text-ink-2">Browser</span>
           <span
             className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-              browser?.backend === "playwright"
+              browser?.backend === "playwright" && chromiumReady
                 ? "bg-green-tint text-green"
                 : "bg-field text-ink-3"
             }`}
@@ -106,6 +131,9 @@ export default function ComputerPanel({
             {browser?.open ? " · open" : ""}
           </span>
         </div>
+        {browserStatus && (
+          <p className="mt-2 text-[11px] text-ink-3">{browserStatus.message}</p>
+        )}
         <p className="mt-2 truncate font-mono text-[11.5px] text-ink-3">
           {browser?.url || "about:blank"}
         </p>
@@ -114,11 +142,15 @@ export default function ComputerPanel({
             {info.workspaceRoot}
           </p>
         )}
-        {browser?.backend !== "playwright" && browserEnabled && (
-          <p className="mt-2 text-[11px] text-ink-3">
-            Install Playwright Chromium:{" "}
-            <code className="font-mono">bunx playwright install chromium</code>
-          </p>
+        {browserEnabled && !chromiumReady && (
+          <button
+            type="button"
+            disabled={installing}
+            onClick={() => void installBrowser()}
+            className="mt-2 rounded-control bg-ink px-3 py-1.5 text-[12px] font-medium text-surface disabled:opacity-50"
+          >
+            {installing ? "Installing Chromium…" : "Install Chromium"}
+          </button>
         )}
         <button
           type="button"
@@ -139,7 +171,7 @@ export default function ComputerPanel({
         />
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || !chromiumReady}
           onClick={() => void openUrl()}
           className="rounded-control bg-ink px-3 py-1.5 text-[12.5px] font-medium text-surface disabled:opacity-50"
         >
@@ -147,7 +179,7 @@ export default function ComputerPanel({
         </button>
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || !chromiumReady}
           onClick={() => void takeShot()}
           className="rounded-control bg-field px-3 py-1.5 text-[12.5px] font-medium text-ink-2 hover:bg-hover disabled:opacity-50"
         >

@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import {
   soraApi,
+  type ModelOption,
   type ProviderInfo,
 } from "../api";
+import ModelPicker from "./ModelPicker";
 
 export default function ProviderSettings({
   onClose,
@@ -12,9 +14,11 @@ export default function ProviderSettings({
   onChanged?: () => void;
 }) {
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
+  const [models, setModels] = useState<Record<string, ModelOption[]>>({});
   const [defaultModel, setDefaultModel] = useState("mock:echo");
   const [draftModel, setDraftModel] = useState("mock:echo");
   const [keys, setKeys] = useState<Record<string, string>>({});
+  const [baseUrls, setBaseUrls] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -22,8 +26,18 @@ export default function ProviderSettings({
   async function refresh() {
     const data = await soraApi.providers();
     setProviders(data.providers);
+    setModels(data.models);
     setDefaultModel(data.defaultModel);
     setDraftModel(data.defaultModel);
+    setBaseUrls((prev) => {
+      const next = { ...prev };
+      for (const p of data.providers) {
+        if (p.allowCustomBaseUrl && !next[p.id]) {
+          next[p.id] = p.baseUrl;
+        }
+      }
+      return next;
+    });
   }
 
   useEffect(() => {
@@ -37,7 +51,10 @@ export default function ProviderSettings({
     setError(null);
     setMessage(null);
     try {
-      await soraApi.setProvider(id, { apiKey: keys[id] || undefined });
+      await soraApi.setProvider(id, {
+        apiKey: keys[id] || undefined,
+        baseUrl: baseUrls[id]?.trim() || undefined,
+      });
       setKeys((prev) => ({ ...prev, [id]: "" }));
       await refresh();
       setMessage(`${id} connected`);
@@ -101,9 +118,9 @@ export default function ProviderSettings({
     <div className="flex h-full min-h-0 w-full max-w-lg flex-col">
       <div className="flex items-center justify-between border-b border-line px-1 pb-3">
         <div>
-          <h2 className="text-[15px] font-semibold text-ink">Models & keys</h2>
+          <h2 className="text-[15px] font-semibold text-ink">Models & providers</h2>
           <p className="mt-0.5 text-[12.5px] text-ink-3">
-            Bring your own LLM — keys stay in ~/.sora/secrets.json
+            Anthropic, Gemini, Groq, Azure, xAI, OpenRouter, Ollama, and more. Keys stay in ~/.sora/secrets.json
           </p>
         </div>
         {onClose && (
@@ -122,20 +139,23 @@ export default function ProviderSettings({
           <label className="text-[12px] font-medium text-ink-2">
             Default model
           </label>
-          <div className="mt-1.5 flex gap-2">
-            <input
+          <div className="mt-1.5">
+            <ModelPicker
+              providers={providers}
+              models={models}
               value={draftModel}
-              onChange={(e) => setDraftModel(e.target.value)}
-              placeholder="openrouter:openai/gpt-4o-mini"
-              className="min-w-0 flex-1 rounded-control border border-line bg-field px-2.5 py-1.5 font-mono text-[12.5px] text-ink outline-none focus:border-line-strong"
+              onChange={setDraftModel}
+              disabled={busy === "default" || busy === "test"}
             />
+          </div>
+          <div className="mt-2 flex gap-2">
             <button
               type="button"
               disabled={busy === "default"}
               onClick={() => void saveDefault()}
               className="rounded-control bg-ink px-3 py-1.5 text-[12.5px] font-medium text-surface disabled:opacity-50"
             >
-              Save
+              Save default
             </button>
             <button
               type="button"
@@ -143,15 +163,9 @@ export default function ProviderSettings({
               onClick={() => void testModel()}
               className="rounded-control bg-field px-3 py-1.5 text-[12.5px] font-medium text-ink-2 hover:bg-hover disabled:opacity-50"
             >
-              Test
+              Test connection
             </button>
           </div>
-          <p className="mt-2 text-[11.5px] text-ink-3">
-            Examples: <code className="font-mono">mock:echo</code>,{" "}
-            <code className="font-mono">ollama:llama3.2</code>,{" "}
-            <code className="font-mono">openai:gpt-4o-mini</code>,{" "}
-            <code className="font-mono">openrouter:anthropic/claude-sonnet-4</code>
-          </p>
         </section>
 
         {providers
@@ -163,8 +177,20 @@ export default function ProviderSettings({
             >
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <div className="text-[13.5px] font-medium text-ink">
-                    {p.name}
+                  <div className="flex items-center gap-2">
+                    <div className="text-[13.5px] font-medium text-ink">
+                      {p.name}
+                    </div>
+                    {p.docsUrl && (
+                      <a
+                        href={p.docsUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[11px] text-ink-3 underline hover:text-ink-2"
+                      >
+                        Docs
+                      </a>
+                    )}
                   </div>
                   <div className="text-[12px] text-ink-3">{p.description}</div>
                 </div>
@@ -183,6 +209,20 @@ export default function ProviderSettings({
                 </span>
               </div>
 
+              {p.allowCustomBaseUrl && (
+                <div className="mt-2.5">
+                  <label className="text-[11px] text-ink-3">Base URL</label>
+                  <input
+                    value={baseUrls[p.id] ?? p.baseUrl}
+                    onChange={(e) =>
+                      setBaseUrls((prev) => ({ ...prev, [p.id]: e.target.value }))
+                    }
+                    placeholder={p.baseUrl}
+                    className="mt-1 w-full rounded-control border border-line bg-field px-2.5 py-1.5 font-mono text-[11.5px] text-ink outline-none focus:border-line-strong"
+                  />
+                </div>
+              )}
+
               {p.needsKey && (
                 <div className="mt-2.5 flex gap-2">
                   <input
@@ -199,7 +239,11 @@ export default function ProviderSettings({
                   />
                   <button
                     type="button"
-                    disabled={busy === p.id || !(keys[p.id] ?? "").trim()}
+                    disabled={
+                      busy === p.id ||
+                      (!(keys[p.id] ?? "").trim() &&
+                        !(p.allowCustomBaseUrl && baseUrls[p.id]?.trim()))
+                    }
                     onClick={() => void saveProvider(p.id)}
                     className="rounded-control bg-ink px-3 py-1.5 text-[12.5px] font-medium text-surface disabled:opacity-40"
                   >
@@ -219,9 +263,21 @@ export default function ProviderSettings({
               )}
 
               {!p.needsKey && (
-                <p className="mt-2 font-mono text-[11.5px] text-ink-3">
-                  {p.baseUrl || "local"}
-                </p>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <p className="font-mono text-[11.5px] text-ink-3">
+                    {p.baseUrl || "local"}
+                  </p>
+                  {p.allowCustomBaseUrl && (
+                    <button
+                      type="button"
+                      disabled={busy === p.id}
+                      onClick={() => void saveProvider(p.id)}
+                      className="rounded-control bg-field px-2.5 py-1 text-[12px] text-ink-2 hover:bg-hover"
+                    >
+                      Save URL
+                    </button>
+                  )}
+                </div>
               )}
             </section>
           ))}
