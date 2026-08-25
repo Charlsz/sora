@@ -35,6 +35,7 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
   const server = Bun.serve({
     hostname: host,
     port,
+    idleTimeout: 0, // SSE stays open
     async fetch(req) {
       const url = new URL(req.url);
       const cors = corsHeaders(req);
