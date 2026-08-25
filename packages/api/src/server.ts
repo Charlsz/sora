@@ -37,8 +37,15 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
     port,
     idleTimeout: 0, // SSE stays open
     async fetch(req) {
+      if (!isLocalRequest(req)) {
+        return new Response("Forbidden", { status: 403 });
+      }
+
       const url = new URL(req.url);
       const cors = corsHeaders(req);
+      if (req.headers.get("origin") && Object.keys(cors).length === 0) {
+        return new Response("Forbidden", { status: 403 });
+      }
 
       if (req.method === "OPTIONS") {
         return new Response(null, { status: 204, headers: cors });
@@ -465,13 +472,49 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
   };
 }
 
+function isLocalHost(hostHeader: string | null): boolean {
+  if (!hostHeader) return false;
+  const host = hostHeader.trim().toLowerCase();
+  return (
+    host.startsWith("127.0.0.1") ||
+    host.startsWith("localhost") ||
+    host.startsWith("[::1]")
+  );
+}
+
+function isLocalOrigin(origin: string | null): boolean {
+  if (!origin) return true;
+  try {
+    const url = new URL(origin);
+    if (url.protocol === "tauri:" || url.protocol === "asset:") return true;
+    const host = url.hostname.toLowerCase();
+    return (
+      host === "127.0.0.1" ||
+      host === "localhost" ||
+      host === "::1" ||
+      host === "tauri.localhost"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isLocalRequest(req: Request): boolean {
+  return isLocalHost(req.headers.get("host"));
+}
+
 function corsHeaders(req: Request): Record<string, string> {
-  const origin = req.headers.get("origin") ?? "*";
+  const origin = req.headers.get("origin");
+  if (origin && !isLocalOrigin(origin)) {
+    return {};
+  }
+  const allow = origin ?? "http://127.0.0.1";
   return {
-    "access-control-allow-origin": origin,
-    "access-control-allow-methods": "GET,POST,OPTIONS",
+    "access-control-allow-origin": allow,
+    "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS",
     "access-control-allow-headers": "content-type",
     "access-control-allow-credentials": "true",
+    vary: "Origin",
   };
 }
 
@@ -480,11 +523,12 @@ function json(
   cors: Record<string, string>,
   status = 200,
 ): Response {
-  return new Response(JSON.stringify(data, null, 2), {
+  return new Response(JSON.stringify(data), {
     status,
     headers: {
       ...cors,
       "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
     },
   });
 }
