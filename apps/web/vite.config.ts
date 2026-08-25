@@ -24,9 +24,20 @@ export default defineConfig({
   },
   envPrefix: ["VITE_", "TAURI_ENV_*"],
   build: {
-    target:
-      process.env.TAURI_ENV_PLATFORM === "windows" ? "chrome105" : "safari13",
+    target: "es2022",
     minify: !process.env.TAURI_ENV_DEBUG ? "esbuild" : false,
+    cssMinify: !process.env.TAURI_ENV_DEBUG,
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
+    reportCompressedSize: false,
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks: undefined,
+      },
+    },
+  },
+  esbuild: {
+    legalComments: "none",
+    drop: process.env.TAURI_ENV_DEBUG ? [] : ["debugger"],
   },
 });

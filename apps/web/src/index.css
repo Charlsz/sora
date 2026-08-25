@@ -76,14 +76,32 @@
     height: 100%;
   }
 
-  body {
-    margin: 0;
-    font-family: var(--font-sans);
-    color: var(--ink);
-    background:
-      radial-gradient(1200px 600px at 8% -12%, #d5ebe7 0%, transparent 55%),
-      radial-gradient(900px 500px at 100% 0%, #e2e7f0 0%, transparent 50%),
-      var(--page);
+  #root {
+    contain: layout style;
+    isolation: isolate;
+  }
+
+  /* Prefer compositor-friendly motion */
+  .motion-gpu {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+  }
+
+  .scroll-pane {
+    overflow: auto;
+    overscroll-behavior: contain;
+    content-visibility: auto;
+    contain: content;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 
   button,
