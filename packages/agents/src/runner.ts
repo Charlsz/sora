@@ -20,6 +20,7 @@ import {
 import type { Tool, ToolRegistry } from "@sora/tools";
 import { join } from "node:path";
 import type { DelegationService } from "./delegation.ts";
+import type { AgentInboxStore } from "./inbox.ts";
 import type { AgentStore } from "./store.ts";
 import type { Agent } from "./types.ts";
 
@@ -59,6 +60,7 @@ export class AgentRunner {
     private readonly permissions: PermissionGate,
     private readonly config: SoraConfig,
     private readonly secrets: SoraSecrets,
+    private readonly inbox: AgentInboxStore | null = null,
   ) {}
 
   setDelegation(delegation: DelegationService): void {
@@ -142,6 +144,8 @@ export class AgentRunner {
         throw new Error(`Conversation "${input.conversationId}" not found`);
       }
 
+      const inboxMessages = this.inbox?.listUnread(agent.id) ?? [];
+
       await this.conversations.appendMessage(conversation.id, {
         role: "user",
         content: prompt,
@@ -161,6 +165,9 @@ export class AgentRunner {
             agent,
             longTerm.map((m) => m.content),
             skillInvocation,
+            inboxMessages.map(
+              (m) => `[${m.fromAgentSlug}] ${m.content}`,
+            ),
           ),
         },
         ...history
@@ -174,6 +181,10 @@ export class AgentRunner {
             }),
           ),
       ];
+
+      if (inboxMessages.length) {
+        this.inbox?.markRead(inboxMessages.map((m) => m.id));
+      }
 
       const { provider, model } = this.providers.resolve(agent.model);
       const toolCallLog: RunAgentResult["toolCalls"] = [];
@@ -218,6 +229,9 @@ export class AgentRunner {
                     agent,
                     longTerm.map((m) => m.content),
                     activeSkill,
+                    inboxMessages.map(
+                      (m) => `[${m.fromAgentSlug}] ${m.content}`,
+                    ),
                   ),
                 };
               }
@@ -402,6 +416,7 @@ export class AgentRunner {
     agent: Agent,
     memories: string[],
     skill: SkillInvocation | null,
+    inbox: string[] = [],
   ): string {
     const workspace = this.paths.agent(agent.slug).workspace;
     const parts = [
@@ -427,6 +442,9 @@ export class AgentRunner {
     }
     if (memories.length) {
       parts.push("Relevant memory:\n- " + memories.join("\n- "));
+    }
+    if (inbox.length) {
+      parts.push("Inbox from other agents:\n- " + inbox.join("\n- "));
     }
     return parts.join("\n\n");
   }
@@ -539,6 +557,43 @@ export class AgentRunner {
       permissions: this.permissions,
       memory: this.memory,
       delegation: this.#delegation ?? undefined,
+      agentMessaging: this.inbox
+        ? {
+            send: async ({ to, message, deliver }) => {
+              try {
+                const target = this.agents.requireBySlugOrName(to);
+                this.inbox!.send({
+                  toAgentId: target.id,
+                  fromAgentId: agent.id,
+                  fromAgentSlug: agent.slug,
+                  content: message,
+                  deliver: deliver ?? "queue",
+                });
+                if (deliver === "run") {
+                  void this.run({
+                    agent: target.slug,
+                    prompt: `[Message from ${agent.slug}] ${message}`,
+                  }).catch(() => {});
+                  return {
+                    ok: true,
+                    output: `Message sent and run started for ${target.slug}`,
+                  };
+                }
+                return {
+                  ok: true,
+                  output: `Message queued for ${target.slug}. They will see it on their next run.`,
+                };
+              } catch (error) {
+                return {
+                  ok: false,
+                  output: "",
+                  error:
+                    error instanceof Error ? error.message : String(error),
+                };
+              }
+            },
+          }
+        : undefined,
     });
   }
 

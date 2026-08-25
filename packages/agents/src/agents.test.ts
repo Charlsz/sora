@@ -71,6 +71,39 @@ describe("agents", () => {
     expect(content).toContain("console.log");
   });
 
+  test("agent_message queues and delivers on next run", async () => {
+    await createAgent(services, { name: "Klaus" });
+    await createAgent(services, { name: "Dev" });
+
+    const sendResult = await services.runner.executeToolForWorkflow(
+      "klaus",
+      "agent_message",
+      {
+        to: "dev",
+        message: "Please check the build",
+        deliver: "queue",
+      },
+    );
+    expect(sendResult.ok).toBe(true);
+
+    const unread = services.inbox.listUnread(
+      services.agents.requireBySlugOrName("dev").id,
+    );
+    expect(unread.some((m) => m.content.includes("check the build"))).toBe(
+      true,
+    );
+
+    const run = await services.runner.run({
+      agent: "dev",
+      prompt: "status",
+    });
+    expect(run.reply.length).toBeGreaterThan(0);
+    const after = services.inbox.listUnread(
+      services.agents.requireBySlugOrName("dev").id,
+    );
+    expect(after.length).toBe(0);
+  });
+
   test("Klaus delegates to Dev", async () => {
     await createAgent(services, {
       name: "Klaus",

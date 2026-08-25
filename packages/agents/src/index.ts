@@ -28,6 +28,7 @@ import {
   WorkflowEngine,
   WorkflowStore,
 } from "@sora/workflows";
+import { AgentInboxStore } from "./inbox.ts";
 import { DelegationService } from "./delegation.ts";
 import { AgentRunner } from "./runner.ts";
 import { AgentStore } from "./store.ts";
@@ -42,6 +43,7 @@ export type CreateSoraServicesOptions = RuntimeOptions & {
 export type SoraServices = {
   runtime: SoraRuntime;
   agents: AgentStore;
+  inbox: AgentInboxStore;
   runner: AgentRunner;
   tools: ToolRegistry;
   providers: ProviderRegistry;
@@ -66,6 +68,7 @@ export function createSoraServices(
   const agents = new AgentStore(runtime.db, runtime.paths, runtime.events);
   const memory = new SqliteMemoryStore(runtime.db);
   const conversations = new SqliteConversationStore(runtime.db);
+  const inbox = new AgentInboxStore(runtime.db);
   const tools = createBuiltinToolRegistry();
   const providers = createDefaultProviderRegistry({
     secrets: runtime.secrets,
@@ -108,6 +111,7 @@ export function createSoraServices(
     permissions,
     runtime.config,
     runtime.secrets,
+    inbox,
   );
   const delegation = new DelegationService({
     agents,
@@ -144,6 +148,7 @@ export function createSoraServices(
   return {
     runtime,
     agents,
+    inbox,
     runner,
     tools,
     providers,
@@ -173,6 +178,7 @@ export async function createAgent(
   return services.agents.create(input, services.runtime.config.defaultModel);
 }
 
+export { AgentInboxStore } from "./inbox.ts";
 export { DelegationService } from "./delegation.ts";
 export { AgentRunner, type RunAgentInput, type RunAgentResult } from "./runner.ts";
 export { AgentStore } from "./store.ts";

@@ -136,4 +136,30 @@ function migrate(db: Database): void {
      ON CONFLICT(key) DO UPDATE SET value = excluded.value
      WHERE CAST(meta.value AS INTEGER) < 3`,
   ).run();
+
+  // v4: agent-to-agent inbox
+  const inboxCols = db
+    .query(`PRAGMA table_info(agent_inbox)`)
+    .all() as Array<{ name: string }>;
+  if (inboxCols.length === 0) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS agent_inbox (
+        id TEXT PRIMARY KEY,
+        to_agent_id TEXT NOT NULL,
+        from_agent_id TEXT NOT NULL,
+        from_agent_slug TEXT NOT NULL,
+        content TEXT NOT NULL,
+        deliver TEXT NOT NULL DEFAULT 'queue',
+        read INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (to_agent_id) REFERENCES agents(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_agent_inbox_to ON agent_inbox(to_agent_id, read, created_at);
+    `);
+  }
+  db.query(
+    `INSERT INTO meta (key, value) VALUES ('schema_version', '4')
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value
+     WHERE CAST(meta.value AS INTEGER) < 4`,
+  ).run();
 }

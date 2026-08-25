@@ -27,7 +27,14 @@ export type ToolContext = {
       toolCalls: Array<{ name: string; ok: boolean; output: string }>;
     }>;
   };
-  /** Optional long-term memory store for this agent. */
+  /** Deliver messages to other agents (agent_message tool). */
+  agentMessaging?: {
+    send(input: {
+      to: string;
+      message: string;
+      deliver?: "queue" | "run";
+    }): Promise<{ ok: boolean; output: string; error?: string }>;
+  };
   memory?: import("@sora/memory").MemoryStore;
   signal?: AbortSignal;
 };
