@@ -27,7 +27,10 @@ export type ConnectResult = {
 };
 
 export type PluginSecrets = {
-  providers: Record<string, { apiKey?: string; baseUrl?: string }>;
+  providers: Record<
+    string,
+    { apiKey?: string; baseUrl?: string; username?: string }
+  >;
 };
 
 /**
@@ -45,6 +48,9 @@ export interface SoraPlugin {
 
   /** Tools contributed when the plugin is configured (may be empty). */
   tools(secrets: PluginSecrets): Tool[];
+
+  /** Optional async discover (MCP). Called before tools() on reload. */
+  refresh?(secrets: PluginSecrets): Promise<void>;
 
   /** Start linking an external account (OAuth / device flow). */
   connect?(

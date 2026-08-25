@@ -11,8 +11,9 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@sora/core": "workspace:*",
-    "@sora/tools": "workspace:*",
-    "@sora/permissions": "workspace:*"
+    "@sora/permissions": "workspace:*",
+    "@sora/tools": "workspace:*"
   }
 }

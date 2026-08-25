@@ -7,6 +7,14 @@ export {
   type SoraEvent,
   type SoraEventType,
 } from "./events.ts";
+export {
+  EMPTY_MCP_CONFIG,
+  loadMcpConfig,
+  publicMcpServers,
+  saveMcpConfig,
+  type McpConfigFile,
+  type McpServerConfig,
+} from "./mcp-config.ts";
 export { getPaths, getSoraHome, type SoraPaths } from "./paths.ts";
 export { SoraRuntime, type RuntimeOptions } from "./runtime.ts";
 export {

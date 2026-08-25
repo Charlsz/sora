@@ -173,6 +173,95 @@ export const soraApi = {
       method: "POST",
       body: JSON.stringify({ app }),
     }),
+  botdirectoryStatus: () =>
+    api<{
+      site: string;
+      categories: string[];
+      username: string | null;
+      writeConfigured: boolean;
+      catalog: {
+        total: number;
+        updatedAt: string;
+        complete: boolean;
+        nextCursor: string | null;
+      };
+    }>("/api/botdirectory").then((data) => ({
+      // tolerate older field names from in-flight servers
+      ...data,
+      writeConfigured:
+        data.writeConfigured ??
+        (data as { writeReady?: boolean }).writeReady ??
+        false,
+    })),
+  botdirectoryBots: (params?: {
+    q?: string;
+    category?: string;
+    limit?: number;
+    live?: boolean;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params?.q) qs.set("q", params.q);
+    if (params?.category) qs.set("category", params.category);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.live) qs.set("live", "1");
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return api<{
+      source: string;
+      bots: Array<{
+        slug: string;
+        name: string;
+        category: string;
+        integrations: string[];
+        prompt: string;
+        detailUrl: string;
+      }>;
+    }>(`/api/botdirectory/bots${suffix}`);
+  },
+  botdirectorySync: (body?: {
+    full?: boolean;
+    reset?: boolean;
+    maxPages?: number;
+  }) =>
+    api<{ ok: boolean; total?: number; added?: number; hasMore?: boolean }>(
+      "/api/botdirectory/sync",
+      { method: "POST", body: JSON.stringify(body ?? {}) },
+    ),
+  botdirectorySignup: (username: string) =>
+    api<{ ok: boolean; username: string }>("/api/botdirectory/signup", {
+      method: "POST",
+      body: JSON.stringify({ username }),
+    }),
+  botdirectoryCredentials: (body: { username?: string; password: string }) =>
+    api<{ ok: boolean; username: string | null }>(
+      "/api/botdirectory/credentials",
+      { method: "PUT", body: JSON.stringify(body) },
+    ),
+  botdirectoryImport: (body: { slug: string; name?: string }) =>
+    api<{ ok: boolean; agent: Agent }>("/api/botdirectory/import", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  botdirectoryPublish: (body: {
+    agentSlug?: string;
+    name?: string;
+    category: string;
+    prompt?: string;
+    integrations?: string[];
+  }) =>
+    api<{
+      ok: boolean;
+      slug: string;
+      prUrl: string;
+      prNumber: number;
+    }>("/api/botdirectory/publish", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  botdirectoryNewsletter: (email: string) =>
+    api<{ subscribed: boolean }>("/api/botdirectory/newsletter", {
+      method: "POST",
+      body: JSON.stringify({ email, source: "bot" }),
+    }),
   pendingPermissions: () =>
     api<PendingPermission[]>("/api/permissions/pending"),
   respondPermission: (requestId: string, decision: "allow" | "deny") =>

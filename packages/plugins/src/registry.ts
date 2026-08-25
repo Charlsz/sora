@@ -1,6 +1,8 @@
 import type { Tool, ToolRegistry } from "@sora/tools";
 import { composioPlugin } from "./builtins/composio.ts";
+import { botdirectoryPlugin } from "./builtins/botdirectory.ts";
 import { githubPlugin } from "./builtins/github.ts";
+import { mcpPlugin } from "./builtins/mcp.ts";
 import type { PluginSecrets, PluginStatus, SoraPlugin } from "./types.ts";
 
 export class PluginRegistry {
@@ -37,6 +39,12 @@ export class PluginRegistry {
     return tools;
   }
 
+  async refreshAll(secrets: PluginSecrets): Promise<void> {
+    for (const plugin of this.list()) {
+      if (plugin.refresh) await plugin.refresh(secrets);
+    }
+  }
+
   /** Register plugin tools onto a ToolRegistry (idempotent by name). */
   applyToToolRegistry(tools: ToolRegistry, secrets: PluginSecrets): void {
     for (const tool of this.collectTools(secrets)) {
@@ -46,5 +54,10 @@ export class PluginRegistry {
 }
 
 export function createDefaultPluginRegistry(): PluginRegistry {
-  return new PluginRegistry([githubPlugin, composioPlugin]);
+  return new PluginRegistry([
+    githubPlugin,
+    composioPlugin,
+    botdirectoryPlugin,
+    mcpPlugin,
+  ]);
 }

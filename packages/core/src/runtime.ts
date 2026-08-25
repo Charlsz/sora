@@ -131,8 +131,12 @@ export class SoraRuntime {
       if (patch.baseUrl.trim() === "") delete nextCred.baseUrl;
       else nextCred.baseUrl = patch.baseUrl.trim().replace(/\/$/, "");
     }
+    if (patch.username !== undefined) {
+      if (patch.username.trim() === "") delete nextCred.username;
+      else nextCred.username = patch.username.trim();
+    }
 
-    if (!nextCred.apiKey && !nextCred.baseUrl) {
+    if (!nextCred.apiKey && !nextCred.baseUrl && !nextCred.username) {
       delete providers[providerId];
     } else {
       providers[providerId] = nextCred;

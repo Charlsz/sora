@@ -54,7 +54,7 @@ export type SoraServices = {
   workflows: WorkflowStore;
   workflowEngine: WorkflowEngine;
   reloadProviders: () => void;
-  reloadPlugins: () => void;
+  reloadPlugins: () => Promise<void>;
 };
 
 export function createSoraServices(
@@ -73,18 +73,19 @@ export function createSoraServices(
   const plugins = createDefaultPluginRegistry();
   const pluginToolNames = new Set<string>();
 
-  const reloadPlugins = () => {
+  const reloadPlugins = async () => {
     runtime.ensureInitialized();
     for (const name of pluginToolNames) {
       tools.unregister(name);
     }
     pluginToolNames.clear();
+    await plugins.refreshAll(runtime.secrets);
     for (const tool of plugins.collectTools(runtime.secrets)) {
       tools.register(tool);
       pluginToolNames.add(tool.name);
     }
   };
-  reloadPlugins();
+  void reloadPlugins();
 
   const permissions = createPermissionGate({
     events: runtime.events,
@@ -127,7 +128,7 @@ export function createSoraServices(
   const reloadProviders = () => {
     runtime.ensureInitialized();
     providers.applySecrets(runtime.secrets);
-    reloadPlugins();
+    void reloadPlugins();
   };
 
   return {

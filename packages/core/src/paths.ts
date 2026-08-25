@@ -14,6 +14,11 @@ export function getPaths(home = getSoraHome()) {
     config: join(home, "config.json"),
     /** Provider API keys — never returned verbatim by the API. */
     secrets: join(home, "secrets.json"),
+    /** User-installed MCP servers (stdio / http). */
+    mcp: join(home, "mcp.json"),
+    /** Local mirror of botdirectory.ai catalog. */
+    botdirectoryDir: join(home, "botdirectory"),
+    botdirectoryCatalog: join(home, "botdirectory", "catalog.json"),
     databaseDir: join(home, "database"),
     database: join(home, "database", "sora.sqlite"),
     agents: join(home, "agents"),

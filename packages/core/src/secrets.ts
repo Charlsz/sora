@@ -4,6 +4,8 @@ import { dirname } from "node:path";
 export type ProviderCredential = {
   apiKey?: string;
   baseUrl?: string;
+  /** Optional handle (e.g. botdirectory.ai username). */
+  username?: string;
 };
 
 export type SoraSecrets = {

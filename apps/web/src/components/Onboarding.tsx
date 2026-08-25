@@ -156,8 +156,8 @@ export default function Onboarding({
       {step === "plugins" && (
         <section className="flex flex-col gap-3">
           <p className="text-[13px] text-ink-2">
-            Optional: link GitHub or Composio later under Plugins. You can chat
-            now.
+            Optional: link GitHub, Composio, or Bot Directory later under
+            Plugins. Every agent can already search botdirectory.ai.
           </p>
           <button
             type="button"

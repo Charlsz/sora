@@ -1,5 +1,25 @@
 import type { SoraServices } from "@sora/agents";
-import type { SoraEvent } from "@sora/core";
+import {
+  loadMcpConfig,
+  publicMcpServers,
+  saveMcpConfig,
+  type McpServerConfig,
+  type SoraEvent,
+} from "@sora/core";
+import {
+  BOTDIRECTORY_CATEGORIES,
+  BOTDIRECTORY_SITE,
+  listBots,
+  loadCatalog,
+  mirrorFullFeed,
+  publishBot,
+  searchLocal,
+  signup as botdirectorySignup,
+  subscribeNewsletter,
+  syncCatalog,
+  whoAmI,
+  type BotdirectoryBot,
+} from "@sora/plugins";
 import type { PermissionAskBridge } from "./permission-ask.ts";
 
 export type ApiServerOptions = {
@@ -200,6 +220,367 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
           );
         }
 
+        if (url.pathname === "/api/mcp" && req.method === "GET") {
+          const cfg = loadMcpConfig(services.runtime.paths.mcp);
+          return json({ servers: publicMcpServers(cfg) }, cors);
+        }
+
+        if (url.pathname === "/api/mcp" && req.method === "PUT") {
+          const body = (await req.json()) as {
+            servers?: McpServerConfig[];
+          };
+          if (!Array.isArray(body.servers)) {
+            return json({ error: "servers array required" }, cors, 400);
+          }
+          const sanitized = body.servers
+            .map(normalizeMcpServer)
+            .filter((s): s is McpServerConfig => s !== null);
+          saveMcpConfig(services.runtime.paths.mcp, {
+            version: 1,
+            servers: sanitized,
+            updatedAt: new Date().toISOString(),
+          });
+          await services.reloadPlugins();
+          const cfg = loadMcpConfig(services.runtime.paths.mcp);
+          return json(
+            {
+              ok: true,
+              servers: publicMcpServers(cfg),
+              tools: services.plugins
+                .get("mcp")
+                .tools(services.runtime.secrets)
+                .map((t) => t.name),
+            },
+            cors,
+          );
+        }
+
+        if (url.pathname === "/api/mcp/servers" && req.method === "POST") {
+          const body = (await req.json()) as Partial<McpServerConfig>;
+          const server = normalizeMcpServer(body);
+          if (!server) {
+            return json(
+              {
+                error:
+                  "id, name, and transport required (stdio needs command; http needs url)",
+              },
+              cors,
+              400,
+            );
+          }
+          const cfg = loadMcpConfig(services.runtime.paths.mcp);
+          const idx = cfg.servers.findIndex((s) => s.id === server.id);
+          if (idx >= 0) {
+            const prev = cfg.servers[idx]!;
+            cfg.servers[idx] = {
+              ...server,
+              headers: server.headers ?? prev.headers,
+              env: server.env ?? prev.env,
+            };
+          } else {
+            cfg.servers.push(server);
+          }
+          saveMcpConfig(services.runtime.paths.mcp, cfg);
+          await services.reloadPlugins();
+          return json(
+            {
+              ok: true,
+              servers: publicMcpServers(
+                loadMcpConfig(services.runtime.paths.mcp),
+              ),
+            },
+            cors,
+          );
+        }
+
+        const mcpDelete = /^\/api\/mcp\/servers\/([^/]+)$/.exec(url.pathname);
+        if (mcpDelete && req.method === "DELETE") {
+          const id = decodeURIComponent(mcpDelete[1]!);
+          const cfg = loadMcpConfig(services.runtime.paths.mcp);
+          cfg.servers = cfg.servers.filter((s) => s.id !== id);
+          saveMcpConfig(services.runtime.paths.mcp, cfg);
+          await services.reloadPlugins();
+          return json(
+            {
+              ok: true,
+              servers: publicMcpServers(
+                loadMcpConfig(services.runtime.paths.mcp),
+              ),
+            },
+            cors,
+          );
+        }
+
+        if (url.pathname === "/api/mcp/reload" && req.method === "POST") {
+          await services.reloadPlugins();
+          const mcp = services.plugins.get("mcp");
+          return json(
+            {
+              ok: true,
+              tools: mcp.tools(services.runtime.secrets).map((t) => ({
+                name: t.name,
+                description: t.description,
+              })),
+              servers: publicMcpServers(
+                loadMcpConfig(services.runtime.paths.mcp),
+              ),
+            },
+            cors,
+          );
+        }
+
+        if (url.pathname === "/api/botdirectory" && req.method === "GET") {
+          const catalog = loadCatalog(
+            services.runtime.paths.botdirectoryCatalog,
+          );
+          const cred = services.runtime.secrets.providers.botdirectory;
+          return json(
+            {
+              site: BOTDIRECTORY_SITE,
+              categories: BOTDIRECTORY_CATEGORIES,
+              username: cred?.username ?? null,
+              writeConfigured: Boolean(cred?.apiKey?.trim()),
+              catalog: {
+                total: Object.keys(catalog.bots).length,
+                updatedAt: catalog.updatedAt,
+                complete: catalog.complete,
+                nextCursor: catalog.nextCursor,
+              },
+            },
+            cors,
+          );
+        }
+
+        if (url.pathname === "/api/botdirectory/bots" && req.method === "GET") {
+          const q = url.searchParams.get("q") ?? undefined;
+          const category = url.searchParams.get("category") ?? undefined;
+          const integration = url.searchParams.get("integration") ?? undefined;
+          const limit = Number(url.searchParams.get("limit") ?? "25");
+          const live = url.searchParams.get("live") === "1";
+          const catalog = loadCatalog(
+            services.runtime.paths.botdirectoryCatalog,
+          );
+          let bots: BotdirectoryBot[] = searchLocal(catalog, {
+            q,
+            category,
+            integration,
+            limit,
+          });
+          let source: "local" | "live" = "local";
+          if (live || bots.length === 0) {
+            const res = await listBots({
+              q,
+              category,
+              integration,
+              limit: Math.min(Math.max(limit || 25, 1), 100),
+              sort: "newest",
+            });
+            bots = res.bots;
+            source = "live";
+          }
+          return json({ source, bots }, cors);
+        }
+
+        if (url.pathname === "/api/botdirectory/sync" && req.method === "POST") {
+          const body = (await req.json().catch(() => ({}))) as {
+            full?: boolean;
+            reset?: boolean;
+            maxPages?: number;
+          };
+          if (body.full) {
+            const total = await mirrorFullFeed(
+              services.runtime.paths.botdirectoryCatalog,
+            );
+            return json({ ok: true, mode: "full", total }, cors);
+          }
+          const result = await syncCatalog(
+            services.runtime.paths.botdirectoryCatalog,
+            {
+              maxPages: body.maxPages ?? 5,
+              reset: body.reset,
+            },
+          );
+          return json({ ok: true, mode: "cursor", ...result }, cors);
+        }
+
+        if (
+          url.pathname === "/api/botdirectory/signup" &&
+          req.method === "POST"
+        ) {
+          const body = (await req.json()) as { username?: string };
+          const username = body.username?.trim().toLowerCase() ?? "";
+          if (username.length < 3 || username.length > 32) {
+            return json(
+              { error: "username must be 3–32 characters" },
+              cors,
+              400,
+            );
+          }
+          const result = await botdirectorySignup(username);
+          services.runtime.setProviderCredential("botdirectory", {
+            apiKey: result.password,
+            username: result.username,
+          });
+          await services.reloadPlugins();
+          return json(
+            {
+              ok: true,
+              username: result.username,
+              // Password stored locally — never returned.
+            },
+            cors,
+            201,
+          );
+        }
+
+        if (
+          url.pathname === "/api/botdirectory/credentials" &&
+          req.method === "PUT"
+        ) {
+          const body = (await req.json()) as {
+            username?: string;
+            password?: string;
+          };
+          if (!body.password?.trim()) {
+            return json({ error: "password required" }, cors, 400);
+          }
+          services.runtime.setProviderCredential("botdirectory", {
+            apiKey: body.password.trim(),
+            username: body.username?.trim(),
+          });
+          await services.reloadPlugins();
+          let me: { username: string | null; owner?: boolean } | null = null;
+          try {
+            me = await whoAmI(body.password.trim());
+            if (me.username) {
+              services.runtime.setProviderCredential("botdirectory", {
+                username: me.username,
+              });
+            }
+          } catch {
+            // keep stored even if /me fails (offline)
+          }
+          return json(
+            {
+              ok: true,
+              username:
+                me?.username ??
+                body.username?.trim() ??
+                services.runtime.secrets.providers.botdirectory?.username ??
+                null,
+            },
+            cors,
+          );
+        }
+
+        if (
+          url.pathname === "/api/botdirectory/import" &&
+          req.method === "POST"
+        ) {
+          const body = (await req.json()) as {
+            slug?: string;
+            name?: string;
+            model?: string;
+          };
+          const slug = body.slug?.trim();
+          if (!slug) return json({ error: "slug required" }, cors, 400);
+          const catalog = loadCatalog(
+            services.runtime.paths.botdirectoryCatalog,
+          );
+          let bot: BotdirectoryBot | undefined = catalog.bots[slug];
+          if (!bot) {
+            const live = await listBots({ q: slug, limit: 50, sort: "name" });
+            bot = live.bots.find((b) => b.slug === slug);
+          }
+          if (!bot) {
+            return json({ error: `bot "${slug}" not found` }, cors, 404);
+          }
+          const agent = services.agents.create(
+            {
+              name: body.name?.trim() || bot.name,
+              description: `Imported from botdirectory.ai (${bot.slug}) · ${bot.category}`,
+              instructions: [
+                bot.prompt,
+                "",
+                `Source: ${bot.detailUrl}`,
+                `Integrations: ${bot.integrations.join(", ") || "none"}`,
+                "You run in Sora. Use linked plugins (GitHub, Composio, MCP) when the user connects them.",
+              ].join("\n"),
+              model: body.model,
+              slug: slug.slice(0, 64),
+            },
+            services.runtime.config.defaultModel,
+          );
+          return json({ ok: true, agent, bot }, cors, 201);
+        }
+
+        if (
+          url.pathname === "/api/botdirectory/publish" &&
+          req.method === "POST"
+        ) {
+          const password =
+            services.runtime.secrets.providers.botdirectory?.apiKey?.trim();
+          if (!password) {
+            return json(
+              { error: "botdirectory write password not configured" },
+              cors,
+              400,
+            );
+          }
+          const body = (await req.json()) as {
+            agentSlug?: string;
+            name?: string;
+            category?: string;
+            prompt?: string;
+            integrations?: string[];
+            url?: string;
+          };
+          let name = body.name?.trim();
+          let prompt = body.prompt;
+          let category = body.category?.trim();
+          let integrations = body.integrations ?? [];
+          if (body.agentSlug?.trim()) {
+            const agent = services.agents.requireBySlugOrName(
+              body.agentSlug.trim(),
+            );
+            name = name || agent.name;
+            prompt = prompt ?? agent.instructions;
+          }
+          if (!name || !prompt || !category) {
+            return json(
+              {
+                error:
+                  "name, category, and prompt required (or agentSlug + category)",
+              },
+              cors,
+              400,
+            );
+          }
+          if (!integrations.length) integrations = ["Sora"];
+          const result = await publishBot(password, {
+            name,
+            category,
+            prompt,
+            integrations,
+            url: body.url,
+            addedVia: "sora",
+          });
+          return json({ ok: true, ...result }, cors, 201);
+        }
+
+        if (
+          url.pathname === "/api/botdirectory/newsletter" &&
+          req.method === "POST"
+        ) {
+          const body = (await req.json()) as { email?: string };
+          const email = body.email?.trim().toLowerCase() ?? "";
+          if (!email.includes("@")) {
+            return json({ error: "valid email required" }, cors, 400);
+          }
+          const result = await subscribeNewsletter(email, "bot");
+          return json(result, cors);
+        }
+
         const pluginConnect = /^\/api\/plugins\/([^/]+)\/connect$/.exec(
           url.pathname,
         );
@@ -335,10 +716,12 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
           const body = (await req.json()) as {
             apiKey?: string;
             baseUrl?: string;
+            username?: string;
           };
           services.runtime.setProviderCredential(id, {
             apiKey: body.apiKey,
             baseUrl: body.baseUrl,
+            username: body.username,
           });
           services.reloadProviders();
           return json(
@@ -591,4 +974,41 @@ async function serveStatic(
     return new Response(index);
   }
   return null;
+}
+
+function normalizeMcpServer(
+  raw: Partial<McpServerConfig> | null | undefined,
+): McpServerConfig | null {
+  if (!raw || typeof raw !== "object") return null;
+  const id = String(raw.id ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const name = String(raw.name ?? id).trim();
+  const transport = raw.transport === "http" ? "http" : "stdio";
+  if (!id || !name) return null;
+  if (transport === "stdio" && !String(raw.command ?? "").trim()) return null;
+  if (transport === "http" && !String(raw.url ?? "").trim()) return null;
+  return {
+    id,
+    name,
+    transport,
+    command: raw.command?.trim(),
+    args: Array.isArray(raw.args) ? raw.args.map(String) : undefined,
+    env:
+      raw.env && typeof raw.env === "object"
+        ? Object.fromEntries(
+            Object.entries(raw.env).map(([k, v]) => [k, String(v)]),
+          )
+        : undefined,
+    url: raw.url?.trim(),
+    headers:
+      raw.headers && typeof raw.headers === "object"
+        ? Object.fromEntries(
+            Object.entries(raw.headers).map(([k, v]) => [k, String(v)]),
+          )
+        : undefined,
+    enabled: raw.enabled !== false,
+  };
 }
