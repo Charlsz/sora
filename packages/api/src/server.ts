@@ -915,13 +915,29 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
         }
 
         if (url.pathname === "/api/providers" && req.method === "GET") {
+          const catalog = services.providers.modelCatalog(
+            services.runtime.secrets,
+          );
           return json(
             {
-              providers: services.providers.status(services.runtime.secrets),
+              providers: catalog.providers,
+              models: catalog.models,
               defaultModel: services.runtime.config.defaultModel,
             },
             cors,
           );
+        }
+
+        if (url.pathname === "/api/browser/status" && req.method === "GET") {
+          const { getBrowserInstallStatus } = await import("@sora/computer");
+          const status = await getBrowserInstallStatus();
+          return json(status, cors);
+        }
+
+        if (url.pathname === "/api/browser/install" && req.method === "POST") {
+          const { installPlaywrightChromium } = await import("@sora/computer");
+          const result = await installPlaywrightChromium();
+          return json(result, cors, result.ok ? 200 : 500);
         }
 
         const providerMatch = /^\/api\/providers\/([^/]+)$/.exec(url.pathname);

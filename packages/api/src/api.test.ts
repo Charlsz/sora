@@ -118,12 +118,17 @@ describe("api providers", () => {
     expect(list.ok).toBe(true);
     const body = (await list.json()) as {
       providers: Array<{ id: string; configured: boolean }>;
+      models: Record<string, Array<{ id: string }>>;
       defaultModel: string;
     };
     expect(body.providers.some((p) => p.id === "openai")).toBe(true);
+    expect(body.providers.some((p) => p.id === "anthropic")).toBe(true);
+    expect(body.providers.some((p) => p.id === "google")).toBe(true);
+    expect(body.providers.some((p) => p.id === "xai")).toBe(true);
     expect(body.providers.some((p) => p.id === "mock" && p.configured)).toBe(
       true,
     );
+    expect(body.models.openai?.length).toBeGreaterThan(0);
 
     const put = await fetch(`${server.url}/api/config`, {
       method: "PUT",
@@ -177,5 +182,17 @@ describe("api providers", () => {
     };
     expect(body.workspaceRoot).toContain(agent.slug);
     expect(["playwright", "placeholder"]).toContain(body.browser.backend);
+  });
+
+  test("browser install status endpoint", async () => {
+    const res = await fetch(`${server.url}/api/browser/status`);
+    expect(res.ok).toBe(true);
+    const body = (await res.json()) as {
+      playwrightInstalled: boolean;
+      chromiumInstalled: boolean;
+      message: string;
+    };
+    expect(typeof body.playwrightInstalled).toBe("boolean");
+    expect(typeof body.message).toBe("string");
   });
 });
