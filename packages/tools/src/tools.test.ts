@@ -18,6 +18,8 @@ describe("tools", () => {
       "invoke_skill",
       "list_dir",
       "read_file",
+      "save_memory",
+      "search_memory",
       "terminal",
       "write_file",
     ]);

@@ -27,6 +27,8 @@ export type ToolContext = {
       toolCalls: Array<{ name: string; ok: boolean; output: string }>;
     }>;
   };
+  /** Optional long-term memory store for this agent. */
+  memory?: import("@sora/memory").MemoryStore;
   signal?: AbortSignal;
 };
 

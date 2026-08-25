@@ -13,6 +13,7 @@ import {
 } from "./computer-tools.ts";
 import { delegateTaskTool } from "./delegation-tools.ts";
 import { invokeSkillTool } from "./skill-tools.ts";
+import { saveMemoryTool, searchMemoryTool } from "./memory-tools.ts";
 import { ToolRegistry } from "./types.ts";
 
 export function createBuiltinToolRegistry(): ToolRegistry {
@@ -32,6 +33,8 @@ export function createBuiltinToolRegistry(): ToolRegistry {
   registry.register(browserTypeTool);
   registry.register(browserScreenshotTool);
   registry.register(browserCloseTool);
+  registry.register(saveMemoryTool);
+  registry.register(searchMemoryTool);
   return registry;
 }
 
@@ -50,6 +53,7 @@ export {
 } from "./computer-tools.ts";
 export { delegateTaskTool } from "./delegation-tools.ts";
 export { invokeSkillTool } from "./skill-tools.ts";
+export { saveMemoryTool, searchMemoryTool } from "./memory-tools.ts";
 export {
   ToolRegistry,
   type Tool,
