@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { soraApi, type PluginStatus } from "../api";
+import McpServersPanel from "./McpServersPanel";
 
 type BdStatus = Awaited<ReturnType<typeof soraApi.botdirectoryStatus>>;
 type BdBot = Awaited<
@@ -479,10 +480,10 @@ export default function PluginsPanel({
               )}
 
               {plugin.id === "mcp" && (
-                <p className="mt-3 text-[12px] text-ink-3">
-                  Add stdio/HTTP MCP servers via ~/.sora/mcp.json (API wiring
-                  next). Tools hot-reload on plugin refresh.
-                </p>
+                <McpServersPanel
+                  onError={(msg) => setError(msg)}
+                  onMessage={(msg) => setMessage(msg)}
+                />
               )}
             </section>
           );
