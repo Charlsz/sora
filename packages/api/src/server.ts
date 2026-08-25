@@ -1,9 +1,13 @@
 import type { SoraServices } from "@sora/agents";
 import {
   loadMcpConfig,
+  loadOpenApiConfig,
   publicMcpServers,
+  publicOpenApiSpecs,
   saveMcpConfig,
+  saveOpenApiConfig,
   type McpServerConfig,
+  type OpenApiSpecConfig,
   type SoraEvent,
 } from "@sora/core";
 import {
@@ -110,6 +114,7 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
           const body = (await req.json()) as {
             prompt?: string;
             skill?: string;
+            conversationId?: string;
           };
           if (!body.prompt?.trim()) {
             return json({ error: "prompt is required" }, cors, 400);
@@ -118,11 +123,48 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
             agent: slug,
             prompt: body.prompt,
             skill: body.skill,
+            conversationId: body.conversationId,
           });
           return json(result, cors);
         }
 
         const agentMatch = /^\/api\/agents\/([^/]+)$/.exec(url.pathname);
+        if (agentMatch && req.method === "PATCH") {
+          const slug = decodeURIComponent(agentMatch[1]!);
+          const body = (await req.json()) as {
+            name?: string;
+            description?: string;
+            instructions?: string;
+            model?: string;
+          };
+          if (body.model?.trim()) {
+            try {
+              services.providers.resolve(body.model.trim());
+            } catch (error) {
+              return json(
+                {
+                  error:
+                    error instanceof Error ? error.message : "unknown provider",
+                },
+                cors,
+                400,
+              );
+            }
+          }
+          const agent = services.agents.update(slug, {
+            name: body.name,
+            description: body.description,
+            instructions: body.instructions,
+            model: body.model?.trim(),
+          });
+          return json(agent, cors);
+        }
+
+        if (agentMatch && req.method === "DELETE") {
+          const slug = decodeURIComponent(agentMatch[1]!);
+          services.agents.delete(slug);
+          return json({ ok: true, slug }, cors);
+        }
         if (agentMatch && req.method === "GET") {
           const slug = decodeURIComponent(agentMatch[1]!);
           const agent = services.agents.requireBySlugOrName(slug);
@@ -159,6 +201,64 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
           return json(services.workflows.list(), cors);
         }
 
+        if (url.pathname === "/api/workflows/record" && req.method === "POST") {
+          const body = (await req.json()) as {
+            conversationId?: string;
+            name?: string;
+            description?: string;
+            agent?: string;
+            cron?: string;
+            webhook?: string;
+          };
+          if (!body.conversationId?.trim() || !body.name?.trim()) {
+            return json(
+              { error: "conversationId and name are required" },
+              cors,
+              400,
+            );
+          }
+          const { stepsFromConversation } = await import("@sora/workflows");
+          const messages = await services.conversations.listMessages(
+            body.conversationId,
+          );
+          const steps = stepsFromConversation(messages);
+          if (!steps.length) {
+            return json(
+              { error: "No tool steps found in this conversation" },
+              cors,
+              400,
+            );
+          }
+          const conversation = await services.conversations.get(
+            body.conversationId,
+          );
+          if (!conversation) {
+            return json({ error: "Conversation not found" }, cors, 404);
+          }
+          const agentRow = services.agents.getById(conversation.agentId);
+          const agentSlug = body.agent?.trim() || agentRow?.slug;
+          if (!agentSlug) {
+            return json({ error: "agent is required" }, cors, 400);
+          }
+          const trigger = body.cron
+            ? { type: "cron" as const, expression: body.cron }
+            : body.webhook
+              ? { type: "webhook" as const, path: body.webhook }
+              : { type: "manual" as const };
+          const wf = services.workflows.create({
+            name: body.name,
+            description:
+              body.description ??
+              `Recorded from conversation (${steps.length} steps)`,
+            agent: agentSlug,
+            task: `Replay ${steps.length} demonstrated tool step(s)`,
+            trigger,
+            steps,
+            source: "demonstration",
+          });
+          return json({ ok: true, workflow: wf, steps: steps.length }, cors, 201);
+        }
+
         if (url.pathname === "/api/workflows" && req.method === "POST") {
           const body = (await req.json()) as {
             name?: string;
@@ -169,6 +269,7 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
             cron?: string;
             webhook?: string;
             enabled?: boolean;
+            steps?: Array<{ tool: string; arguments: Record<string, unknown> }>;
           };
           if (!body.name?.trim() || !body.agent?.trim() || !body.task?.trim()) {
             return json(
@@ -190,6 +291,7 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
             skill: body.skill,
             trigger,
             enabled: body.enabled ?? true,
+            steps: body.steps,
           });
           return json(wf, cors, 201);
         }
@@ -199,6 +301,36 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
           const slug = decodeURIComponent(wfRun[1]!);
           const run = await services.workflowEngine.run(slug);
           return json(run, cors);
+        }
+
+        const hookMatch = /^\/api\/hooks\/(.+)$/.exec(url.pathname);
+        if (hookMatch && req.method === "POST") {
+          const path = decodeURIComponent(hookMatch[1]!);
+          const secret = req.headers.get("x-sora-webhook-secret") ?? undefined;
+          let body: Record<string, unknown> = {};
+          try {
+            const raw = await req.text();
+            body = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+          } catch {
+            body = {};
+          }
+          const runs = await services.workflowEngine.handleWebhook({
+            path,
+            secret,
+            body,
+          });
+          return json(
+            {
+              ok: true,
+              triggered: runs.length,
+              runs: runs.map((r) => ({
+                id: r.id,
+                status: r.status,
+                workflowId: r.workflowId,
+              })),
+            },
+            cors,
+          );
         }
 
         if (url.pathname === "/api/tools" && req.method === "GET") {
@@ -324,6 +456,45 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
               servers: publicMcpServers(
                 loadMcpConfig(services.runtime.paths.mcp),
               ),
+            },
+            cors,
+          );
+        }
+
+        if (url.pathname === "/api/openapi" && req.method === "GET") {
+          const cfg = loadOpenApiConfig(services.runtime.paths.openapi);
+          return json({ specs: publicOpenApiSpecs(cfg) }, cors);
+        }
+
+        if (url.pathname === "/api/openapi" && req.method === "PUT") {
+          const body = (await req.json()) as { specs?: OpenApiSpecConfig[] };
+          if (!Array.isArray(body.specs)) {
+            return json({ error: "specs array required" }, cors, 400);
+          }
+          saveOpenApiConfig(services.runtime.paths.openapi, {
+            version: 1,
+            specs: body.specs,
+            updatedAt: new Date().toISOString(),
+          });
+          await services.reloadPlugins();
+          return json(
+            {
+              ok: true,
+              specs: publicOpenApiSpecs(
+                loadOpenApiConfig(services.runtime.paths.openapi),
+              ),
+            },
+            cors,
+          );
+        }
+
+        if (url.pathname === "/api/openapi/reload" && req.method === "POST") {
+          await services.reloadPlugins();
+          const openapi = services.plugins.get("openapi");
+          return json(
+            {
+              ok: true,
+              tools: openapi.tools(services.runtime.secrets).map((t) => t.name),
             },
             cors,
           );
@@ -669,6 +840,11 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
           return json(
             {
               defaultModel: services.runtime.config.defaultModel,
+              browser: services.runtime.config.browser ?? "on",
+              sandbox: services.runtime.config.sandbox ?? {
+                enabled: false,
+                provider: "local",
+              },
               home: services.runtime.paths.home,
             },
             cors,
@@ -676,25 +852,66 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
         }
 
         if (url.pathname === "/api/config" && req.method === "PUT") {
-          const body = (await req.json()) as { defaultModel?: string };
-          if (!body.defaultModel?.trim()) {
-            return json({ error: "defaultModel is required" }, cors, 400);
+          const body = (await req.json()) as {
+            defaultModel?: string;
+            browser?: "on" | "off";
+            sandbox?: { enabled?: boolean; provider?: "local" | "e2b" | "daytona" };
+          };
+          const patch: {
+            defaultModel?: string;
+            browser?: "on" | "off";
+            sandbox?: { enabled: boolean; provider: "local" | "e2b" | "daytona" };
+          } = {};
+
+          if (body.defaultModel?.trim()) {
+            const ref = body.defaultModel.trim();
+            try {
+              services.providers.resolve(ref);
+            } catch (error) {
+              return json(
+                {
+                  error:
+                    error instanceof Error ? error.message : "unknown provider",
+                },
+                cors,
+                400,
+              );
+            }
+            patch.defaultModel = ref;
           }
-          const ref = body.defaultModel.trim();
-          try {
-            services.providers.resolve(ref);
-          } catch (error) {
+
+          if (body.browser === "on" || body.browser === "off") {
+            patch.browser = body.browser;
+          }
+
+          if (body.sandbox) {
+            const prev = services.runtime.config.sandbox ?? {
+              enabled: false,
+              provider: "local" as const,
+            };
+            patch.sandbox = {
+              enabled: body.sandbox.enabled ?? prev.enabled,
+              provider: body.sandbox.provider ?? prev.provider,
+            };
+          }
+
+          if (!patch.defaultModel && !patch.browser && !patch.sandbox) {
             return json(
-              {
-                error:
-                  error instanceof Error ? error.message : "unknown provider",
-              },
+              { error: "defaultModel, browser, or sandbox is required" },
               cors,
               400,
             );
           }
-          const config = services.runtime.updateConfig({ defaultModel: ref });
-          return json({ defaultModel: config.defaultModel }, cors);
+
+          const config = services.runtime.updateConfig(patch);
+          return json(
+            {
+              defaultModel: config.defaultModel,
+              browser: config.browser ?? "on",
+              sandbox: config.sandbox ?? { enabled: false, provider: "local" },
+            },
+            cors,
+          );
         }
 
         if (url.pathname === "/api/providers" && req.method === "GET") {
@@ -833,6 +1050,13 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
   });
 
   const url = `http://${host}:${server.port}`;
+
+  services.workflowEngine.startScheduler();
+  void services.runtime.events.emit(
+    "runtime.started",
+    { url, port: server.port },
+    "api",
+  );
 
   return {
     url,
