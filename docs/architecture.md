@@ -5,34 +5,43 @@
 - **Runtime is the product.** UI and CLI are clients of the runtime.
 - **Local-first.** Persistent state lives under `~/.sora` (or `$SORA_HOME`).
 - **Model-agnostic.** Agents reference models as `provider:model` strings.
-- **Replaceable backends.** Memory, models, tools, and computers use interfaces.
+- **Replaceable backends.** Memory, models, tools, computers, and plugins use interfaces.
 - **Observable.** Important actions emit events on a central bus.
-- **Security-first.** Privileged tools require explicit permission modes (Phase 2).
+- **Security-first.** Privileged tools go through `PermissionGate`; secrets never appear in SSE/logs.
 
 ## Package boundaries
 
-| Package        | Responsibility                                      |
-|----------------|-----------------------------------------------------|
-| `@sora/core`   | Paths, config, SQLite bootstrap, event bus, runtime |
-| `@sora/models` | `ModelProvider` interface and providers             |
-| `@sora/tools`  | Tool interface, registry, built-in tools            |
-| `@sora/memory` | Conversation + long-term memory stores              |
-| `@sora/agents` | Agent types, store, runner, tool loop               |
-| `@sora/cli`    | Local CLI client                                    |
+| Package            | Responsibility                                         |
+|--------------------|--------------------------------------------------------|
+| `@sora/core`       | Paths, config, SQLite, secrets, event bus, runtime     |
+| `@sora/models`     | `ModelProvider` interface and LLM providers            |
+| `@sora/tools`      | Tool interface, registry, built-in tools               |
+| `@sora/plugins`    | Connector SPI (GitHub, Composio, …) → tools            |
+| `@sora/memory`     | Conversation + long-term memory stores                 |
+| `@sora/computer`   | Local workspace FS/terminal + Playwright browser       |
+| `@sora/permissions`| Permission gate + interactive asks                     |
+| `@sora/skills`     | Skill discovery / install                              |
+| `@sora/workflows`  | Routines (manual / cron / webhook)                     |
+| `@sora/agents`     | Agent store, runner, delegation, service wiring        |
+| `@sora/api`        | Local HTTP + SSE                                       |
+| `@sora/cli` / web  | Clients                                                |
 
-Agents never import React. Tools never import the CLI/UI.
+Agents never import React. Tools never import the CLI/UI. Plugins register tools without touching the runner.
 
 ## Data layout
 
 ```text
 ~/.sora/
 ├── config.json
+├── secrets.json          # mode 0600 — API keys / PATs
 ├── database/
 │   └── sora.sqlite
+├── skills/
 ├── agents/
 │   └── <slug>/
 │       ├── agent.json
 │       ├── workspace/
+│       ├── browser-profile/   # persistent Chromium profile
 │       ├── memory/
 │       └── skills/
 └── logs/
@@ -45,51 +54,51 @@ mock:echo
 openai:gpt-4o-mini
 ollama:llama3
 openrouter:anthropic/claude-sonnet-4
+openrouter:x-ai/grok-2
 ```
 
-The `openai-compatible` transport covers OpenAI, OpenRouter, Ollama (OpenAI mode), and custom base URLs.
+The OpenAI-compatible transport covers OpenAI, OpenRouter, Ollama, and custom base URLs.
 
-## Phase roadmap
+## Connectors (plugins)
 
-1. Runtime + agents + models + tools + memory + CLI — done
-2. LocalComputer + permissions + workspace isolation — done
-3. Delegation + agent messaging + routing — done
-4. Skills — done
-5. Workflows — done
-6. UI — done (minimal workspace)
-7. Browser computer
-8. Plugins
+| Plugin   | Auth                         | Why                                      |
+|----------|------------------------------|------------------------------------------|
+| GitHub   | PAT (`GITHUB_TOKEN` / secrets) | Direct API — no broker                   |
+| Composio | Project API key + OAuth apps | Same broker Grok Build docs recommend    |
+
+```bash
+sora provider set github --key ghp_…
+sora provider set composio --key ak_…
+sora plugin connect composio slack
+```
+
+## Security & privacy
+
+- Secrets only in `~/.sora/secrets.json` or env; API status returns masked hints.
+- Plugin/tool HTTP calls require `http.request` permission (interactive or `--yes`).
+- Browser is local Playwright per agent — no mandatory cloud VM.
+- Composio holds third-party OAuth tokens (SOC2/ISO); Sora never stores them.
+
+See `docs/mvp-plan.md` for product positioning and roadmap.
 
 ## Decision log
 
-### Bun workspaces over pnpm/turbo
+### Bun workspaces
 
-Bun is the runtime and package manager. Extra tooling is deferred until needed.
+Bun is the runtime and package manager.
 
 ### SQLite via `bun:sqlite`
 
-Native, zero-config local persistence. The `MemoryStore` interface keeps the door open for other backends.
+Native local persistence. `MemoryStore` stays swappable.
 
 ### Mock model provider
 
-Phase 1 must run without cloud credentials. `mock:echo` is the default so CLI demos and tests stay offline-capable. The mock provider recognizes simple filesystem/terminal intents for Phase 2 demos.
+Offline default: `mock:echo`.
 
-### Single process runtime
+### Local browser over Box/CUA
 
-Phase 1 embeds the runtime in the CLI process. A long-lived daemon/API arrives when the UI needs it.
+Free, per-agent Chromium. Optional cloud computers stay post-MVP.
 
-### Workspace-scoped LocalComputer
+### Plugin SPI over hard-coded connectors
 
-Agents never receive a host-root filesystem handle. `LocalFilesystem.resolveSafe` rejects path traversal. Privileged actions go through `PermissionGate` (`allow` / `deny` / `ask`). CLI `--yes` or `SORA_AUTO_APPROVE=1` auto-approves ask decisions for local development.
-
-### Capability-based routing
-
-`AgentRouter` scores agents from descriptions/capabilities and optional `prefer` hints. There is no `if (task === "coding") useDev()` branch. Delegation depth is capped to prevent loops.
-
-### Shared skills
-
-Skills live in `~/.sora/skills` (shared), not inside a single agent. `@sora/skills` loads `manifest.json` + `skill.md`. Execution injects instructions into the agent's existing run and intersects tool allowlists; tools still pass through `PermissionGate` → `LocalComputer`.
-
-### Workflows
-
-`@sora/workflows` is a generic engine: triggers (manual, cron, webhook, event) fire workflows that always execute through a `WorkflowExecutor` bound to `AgentRunner`. Cron is one trigger implementation, not the engine itself.
+New apps register as `SoraPlugin` without changing the runner.

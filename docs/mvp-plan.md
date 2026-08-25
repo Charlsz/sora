@@ -56,13 +56,13 @@ packages/protocol → routing helpers
 - [x] Permissions + interactive ask UI
 - [x] BYO LLM onboarding
 - [x] Local browser computer + panel
-- [ ] Modular `@sora/plugins` package
-- [ ] Composio + GitHub connectors (link account → tools)
-- [ ] Plugins marketplace UI
-- [ ] Routines create/list/run in UI
-- [ ] Agent create onboarding in UI
-- [ ] Architecture doc updated
+- [x] Modular `@sora/plugins` package
+- [x] Composio + GitHub connectors (link account → tools)
+- [x] Plugins marketplace UI
+- [x] Routines create/list/run in UI
+- [x] Agent create onboarding in UI
+- [x] Architecture + security docs updated
 
 ## Post-MVP
 
-Desktop shell (Bun), teach/record skill, richer triggers, optional Cua/Box adapters.
+Desktop shell (Bun), teach/record skill, richer triggers, optional Cua/Box adapters, API auth for non-localhost.
