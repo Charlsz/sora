@@ -82,9 +82,13 @@ function Badge({
 export default function TaskRows({
   rows,
   onRun,
+  onCopy,
+  copiedKey,
 }: {
   rows: TaskRowData[];
   onRun?: (key: string) => void;
+  onCopy?: (key: string, text: string) => void;
+  copiedKey?: string | null;
 }) {
   const [manualOpen, setManualOpen] = useState<Record<string, boolean>>({});
 
@@ -227,8 +231,26 @@ export default function TaskRows({
                         }
                       >
                         <span className="text-[12px] text-ink-2">{d.label}</span>
-                        <span className="font-mono text-[11.5px] text-ink-3 tabular-nums">
-                          {d.meta}
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <span className="truncate font-mono text-[11.5px] text-ink-3 tabular-nums">
+                            {d.meta}
+                          </span>
+                          {onCopy &&
+                            d.label === "Webhook" &&
+                            d.meta.includes("/api/hooks/") && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onCopy(`${row.key}-webhook`, d.meta);
+                                }}
+                                className="shrink-0 rounded-full bg-field px-2 py-0.5 text-[10.5px] text-ink-2 hover:bg-hover"
+                              >
+                                {copiedKey === `${row.key}-webhook`
+                                  ? "Copied"
+                                  : "Copy"}
+                              </button>
+                            )}
                         </span>
                       </div>
                     ))}

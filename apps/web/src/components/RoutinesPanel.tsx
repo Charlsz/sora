@@ -2,6 +2,40 @@ import { useState } from "react";
 import { soraApi, type Agent, type Workflow } from "../api";
 import TaskRows, { type TaskRowData } from "./TaskRows";
 
+const CRON_PRESETS = [
+  { id: "", label: "No schedule (manual / webhook only)" },
+  { id: "0 7 * * *", label: "Every day at 7:00" },
+  { id: "0 9 * * 1-5", label: "Weekdays at 9:00" },
+  { id: "0 * * * *", label: "Every hour" },
+  { id: "custom", label: "Custom cron…" },
+] as const;
+
+function slugifyName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 48);
+}
+
+function webhookUrl(path: string): string {
+  const origin =
+    typeof window !== "undefined" && window.location.origin
+      ? window.location.origin
+      : "http://127.0.0.1:7420";
+  return `${origin}/api/hooks/${path}`;
+}
+
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export default function RoutinesPanel({
   agents,
   workflows,
@@ -16,23 +50,40 @@ export default function RoutinesPanel({
   const [name, setName] = useState("");
   const [agent, setAgent] = useState(agents[0]?.slug ?? "");
   const [task, setTask] = useState("");
-  const [cron, setCron] = useState("");
+  const [cronPreset, setCronPreset] = useState("");
+  const [cronCustom, setCronCustom] = useState("");
+  const [webhook, setWebhook] = useState("");
   const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
 
-  const rows: TaskRowData[] = workflows.map((w) => ({
-    key: w.slug,
-    label: w.name,
-    meta: w.trigger.type,
-    status: w.enabled ? "pending" : "failed",
-    details: [
-      { label: "Agent", meta: w.agentSlug },
-      { label: "Task", meta: w.task.slice(0, 64) },
-      ...(w.skill ? [{ label: "Skill", meta: w.skill }] : []),
-      ...(w.trigger.expression
-        ? [{ label: "Cron", meta: w.trigger.expression }]
-        : []),
-    ],
-  }));
+  const cron =
+    cronPreset === "custom"
+      ? cronCustom.trim()
+      : cronPreset === ""
+        ? ""
+        : cronPreset;
+
+  const rows: TaskRowData[] = workflows.map((w) => {
+    const webhookPath =
+      w.trigger.type === "webhook" ? w.trigger.path : undefined;
+    return {
+      key: w.slug,
+      label: w.name,
+      meta: w.trigger.type,
+      status: w.enabled ? "pending" : "failed",
+      details: [
+        { label: "Agent", meta: w.agentSlug },
+        { label: "Task", meta: w.task.slice(0, 64) },
+        ...(w.skill ? [{ label: "Skill", meta: w.skill }] : []),
+        ...(w.trigger.type === "cron" && w.trigger.expression
+          ? [{ label: "Cron", meta: w.trigger.expression }]
+          : []),
+        ...(webhookPath
+          ? [{ label: "Webhook", meta: webhookUrl(webhookPath) }]
+          : []),
+      ],
+    };
+  });
 
   async function create() {
     if (!name.trim() || !agent.trim() || !task.trim()) {
@@ -41,15 +92,20 @@ export default function RoutinesPanel({
     }
     setBusy(true);
     try {
+      const webhookPath =
+        webhook.trim() || slugifyName(name) || undefined;
       await soraApi.createWorkflow({
         name: name.trim(),
         agent: agent.trim(),
         task: task.trim(),
-        cron: cron.trim() || undefined,
+        cron: cron || undefined,
+        webhook: !cron && webhookPath ? webhookPath : undefined,
       });
       setName("");
       setTask("");
-      setCron("");
+      setCronPreset("");
+      setCronCustom("");
+      setWebhook("");
       onChanged();
     } catch (err) {
       onError(err instanceof Error ? err.message : String(err));
@@ -58,12 +114,20 @@ export default function RoutinesPanel({
     }
   }
 
+  async function handleCopy(key: string, text: string) {
+    const ok = await copyText(text);
+    if (ok) {
+      setCopied(key);
+      setTimeout(() => setCopied(null), 2000);
+    }
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col gap-5">
       <div>
         <h2 className="text-[15px] font-semibold text-ink">Routines</h2>
         <p className="mt-0.5 text-[12.5px] text-ink-3">
-          Scheduled or manual workflows — same idea as Grok Bot routines.
+          Cron, webhooks, or manual runs. Keep the runtime running for schedules — see docs/always-on.md.
         </p>
       </div>
 
@@ -72,7 +136,13 @@ export default function RoutinesPanel({
         <div className="mt-3 flex flex-col gap-2">
           <input
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              setName(e.target.value);
+              if (!webhook) {
+                const s = slugifyName(e.target.value);
+                if (s) setWebhook(s);
+              }
+            }}
             placeholder="Name (e.g. morning-brief)"
             className="h-9 rounded-control border border-line bg-field px-3 text-[13px] text-ink outline-none focus:border-line-strong"
           />
@@ -97,12 +167,57 @@ export default function RoutinesPanel({
             placeholder="Task prompt the agent will run"
             className="rounded-control border border-line bg-field px-3 py-2 text-[13px] text-ink outline-none focus:border-line-strong"
           />
-          <input
-            value={cron}
-            onChange={(e) => setCron(e.target.value)}
-            placeholder="Cron (optional) e.g. 0 7 * * 1-5"
-            className="h-9 rounded-control border border-line bg-field px-3 font-mono text-[12.5px] text-ink outline-none focus:border-line-strong"
-          />
+          <label className="text-[11.5px] text-ink-3">Schedule</label>
+          <select
+            value={cronPreset}
+            onChange={(e) => setCronPreset(e.target.value)}
+            className="h-9 rounded-control border border-line bg-field px-3 text-[13px] text-ink"
+          >
+            {CRON_PRESETS.map((p) => (
+              <option key={p.id || "none"} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+          {cronPreset === "custom" && (
+            <input
+              value={cronCustom}
+              onChange={(e) => setCronCustom(e.target.value)}
+              placeholder="0 7 * * 1-5"
+              className="h-9 rounded-control border border-line bg-field px-3 font-mono text-[12.5px] text-ink outline-none focus:border-line-strong"
+            />
+          )}
+          {!cron && (
+            <>
+              <label className="text-[11.5px] text-ink-3">
+                Webhook path (POST /api/hooks/…)
+              </label>
+              <div className="flex gap-2">
+                <input
+                  value={webhook}
+                  onChange={(e) => setWebhook(e.target.value)}
+                  placeholder="morning-brief"
+                  className="min-w-0 flex-1 h-9 rounded-control border border-line bg-field px-3 font-mono text-[12.5px] text-ink outline-none focus:border-line-strong"
+                />
+                {webhook.trim() && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void handleCopy("draft", webhookUrl(webhook.trim()))
+                    }
+                    className="shrink-0 rounded-control bg-field px-2.5 py-1.5 text-[12px] text-ink-2 hover:bg-hover"
+                  >
+                    {copied === "draft" ? "Copied" : "Copy URL"}
+                  </button>
+                )}
+              </div>
+              {webhook.trim() && (
+                <p className="font-mono text-[10.5px] break-all text-ink-3">
+                  {webhookUrl(webhook.trim())}
+                </p>
+              )}
+            </>
+          )}
           <button
             type="button"
             disabled={busy || agents.length === 0}
@@ -124,6 +239,8 @@ export default function RoutinesPanel({
               onError(err instanceof Error ? err.message : String(err)),
             );
         }}
+        onCopy={(key, text) => void handleCopy(key, text)}
+        copiedKey={copied}
       />
     </div>
   );

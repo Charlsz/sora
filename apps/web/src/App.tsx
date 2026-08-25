@@ -47,6 +47,7 @@ export function App() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [defaultModel, setDefaultModel] = useState<string>("mock:echo");
   const [onboardingDone, setOnboardingDone] = useState(false);
+  const [saveRoutineBusy, setSaveRoutineBusy] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const active = useMemo(
@@ -261,6 +262,36 @@ export function App() {
     })),
   ];
 
+  async function saveChatAsRoutine() {
+    if (!conversationId || !active || saveRoutineBusy) return;
+    const defaultName = (chatTitle || "recorded-routine")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .slice(0, 48);
+    const name = window.prompt("Routine name", defaultName || "recorded-routine");
+    if (!name?.trim()) return;
+    setSaveRoutineBusy(true);
+    setError(null);
+    try {
+      const result = await soraApi.recordWorkflow({
+        conversationId,
+        name: name.trim(),
+        agent: active.slug,
+      });
+      await refresh();
+      setNav("routines");
+      setError(null);
+      window.alert(
+        `Routine "${result.workflow.name}" saved with ${result.steps} tool step(s).`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaveRoutineBusy(false);
+    }
+  }
+
   async function send(text: string) {
     if (!active || busy) return;
     const { prompt, skill } = parseSkillFromPrompt(text);
@@ -409,7 +440,21 @@ export function App() {
                 : `Local-first · ${defaultModel}`}
             </p>
           </div>
-          {busy && <LoadingState label="Agent working" variant="Dots" />}
+          <div className="flex items-center gap-2">
+            {nav === "chats" &&
+              conversationId &&
+              toolRows.some((t) => t.status === "completed") && (
+                <button
+                  type="button"
+                  disabled={saveRoutineBusy || busy}
+                  onClick={() => void saveChatAsRoutine()}
+                  className="rounded-control bg-field px-2.5 py-1.5 text-[12px] font-medium text-ink-2 hover:bg-hover disabled:opacity-50"
+                >
+                  {saveRoutineBusy ? "Saving…" : "Save as routine"}
+                </button>
+              )}
+            {busy && <LoadingState label="Agent working" variant="Dots" />}
+          </div>
         </header>
 
         <div className="scroll-pane min-h-0 flex-1 px-5 py-4">
