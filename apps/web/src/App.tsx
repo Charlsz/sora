@@ -13,6 +13,7 @@ import AgentsPanel from "./components/AgentsPanel";
 import ComputerPanel from "./components/ComputerPanel";
 import ContextCards from "./components/ContextCards";
 import LoadingState from "./components/LoadingState";
+import Onboarding from "./components/Onboarding";
 import PluginsPanel from "./components/PluginsPanel";
 import PromptBar from "./components/PromptBar";
 import ProviderSettings from "./components/ProviderSettings";
@@ -44,6 +45,7 @@ export function App() {
   const [nav, setNav] = useState("chats");
   const [chatTitle, setChatTitle] = useState<string | null>(null);
   const [defaultModel, setDefaultModel] = useState<string>("mock:echo");
+  const [onboardingDone, setOnboardingDone] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const active = useMemo(
@@ -142,8 +144,10 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [live, busy, pending]);
+    bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+  }, [live.length, busy, pending.length]);
+
+  const showOnboarding = apiOk && agents.length === 0 && !onboardingDone;
 
   const toolRows: ToolRow[] = live
     .filter((e): e is Extract<LiveEntry, { kind: "tool" }> => e.kind === "tool")
@@ -311,13 +315,20 @@ export function App() {
           {busy && <LoadingState label="Agent working" variant="Dots" />}
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+        <div className="scroll-pane min-h-0 flex-1 px-5 py-4">
           {error && nav !== "chats" && (
             <p className="mb-4 rounded-control bg-red-tint px-3 py-2 text-[13px] text-red">
               {error}
             </p>
           )}
-          {nav === "settings" ? (
+          {showOnboarding ? (
+            <Onboarding
+              onDone={() => {
+                setOnboardingDone(true);
+                void refresh().then(() => setNav("chats"));
+              }}
+            />
+          ) : nav === "settings" ? (
             <ProviderSettings onChanged={() => void refresh()} />
           ) : nav === "plugins" ? (
             <PluginsPanel onChanged={() => void refresh()} />
@@ -412,7 +423,7 @@ export function App() {
           )}
         </div>
 
-        {nav === "chats" && (
+        {nav === "chats" && !showOnboarding && (
           <div className="shrink-0 border-t border-line bg-panel/80 px-5 py-3 backdrop-blur">
             <PromptBar
               disabled={busy || !active}
