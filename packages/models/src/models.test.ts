@@ -43,8 +43,20 @@ describe("ProviderRegistry", () => {
     const registry = createDefaultProviderRegistry();
     expect(registry.list()).toContain("mock");
     expect(registry.list()).toContain("openai");
+    expect(registry.list()).toContain("anthropic");
+    expect(registry.list()).toContain("google");
+    expect(registry.list()).toContain("xai");
+    expect(registry.list()).toContain("groq");
+    expect(registry.list()).toContain("azure");
     const resolved = registry.resolve("mock:echo");
     expect(resolved.provider.id).toBe("mock");
     expect(resolved.model).toBe("echo");
+  });
+
+  test("model catalog includes curated models", () => {
+    const registry = createDefaultProviderRegistry();
+    const catalog = registry.modelCatalog({ providers: {} });
+    expect(catalog.models.openrouter?.length).toBeGreaterThan(0);
+    expect(catalog.providers.some((p) => p.id === "ollama")).toBe(true);
   });
 });

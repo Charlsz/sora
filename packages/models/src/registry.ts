@@ -1,6 +1,11 @@
 import { MockProvider } from "./mock.ts";
 import { OpenAICompatibleProvider } from "./openai-compatible.ts";
 import {
+  PROVIDER_CATALOG,
+  type ProviderCatalogEntry,
+} from "./providers/catalog.ts";
+import { CURATED_MODELS, type ModelOption } from "./providers/models.ts";
+import {
   parseModelReference,
   type ModelProvider,
   type ModelReference,
@@ -18,51 +23,60 @@ export type ProviderStatus = {
   fromEnv: boolean;
   needsKey: boolean;
   baseUrl: string;
-  /** Never the raw key — only a short mask when configured locally. */
+  allowCustomBaseUrl: boolean;
+  docsUrl: string | null;
   hint: string | null;
 };
 
-const CATALOG = [
-  {
-    id: "mock",
-    name: "Mock (offline)",
-    description: "Built-in echo model for tests — no key required",
-    needsKey: false,
-    defaultBaseUrl: "",
-    envKey: "",
-  },
-  {
-    id: "openai",
-    name: "OpenAI",
-    description: "Official OpenAI API",
-    needsKey: true,
-    defaultBaseUrl: "https://api.openai.com/v1",
-    envKey: "OPENAI_API_KEY",
-  },
-  {
-    id: "openrouter",
-    name: "OpenRouter",
-    description: "One key → many models (Claude, Gemini, Grok, …)",
-    needsKey: true,
-    defaultBaseUrl: "https://openrouter.ai/api/v1",
-    envKey: "OPENROUTER_API_KEY",
-  },
-  {
-    id: "ollama",
-    name: "Ollama",
-    description: "Local models — free on your machine",
-    needsKey: false,
-    defaultBaseUrl: "http://127.0.0.1:11434/v1",
-    envKey: "OLLAMA_API_KEY",
-  },
-] as const;
+export type ModelCatalogResponse = {
+  providers: ProviderStatus[];
+  models: Record<string, ModelOption[]>;
+  defaultModel: string;
+};
+
+function resolveEnvKey(meta: ProviderCatalogEntry): string | undefined {
+  if (!meta.envKey) return undefined;
+  const direct = process.env[meta.envKey]?.trim();
+  if (direct) return direct;
+  if (meta.id === "openai") {
+    return process.env.SORA_API_KEY?.trim();
+  }
+  if (meta.id === "google") {
+    return process.env.GEMINI_API_KEY?.trim();
+  }
+  if (meta.id === "anthropic") {
+    return process.env.OPENROUTER_API_KEY?.trim();
+  }
+  return undefined;
+}
+
+function createOpenAIProviders(): Map<string, OpenAICompatibleProvider> {
+  const map = new Map<string, OpenAICompatibleProvider>();
+  for (const meta of PROVIDER_CATALOG) {
+    if (meta.id === "mock") continue;
+    map.set(
+      meta.id,
+      new OpenAICompatibleProvider({
+        id: meta.id,
+        apiKey: meta.id === "ollama" ? "ollama" : "",
+        baseUrl: meta.defaultBaseUrl,
+        defaultHeaders: meta.defaultHeaders,
+      }),
+    );
+  }
+  return map;
+}
 
 export class ProviderRegistry {
   #providers = new Map<string, ModelProvider>();
+  #openai = createOpenAIProviders();
 
   constructor(providers: ModelProvider[] = []) {
     for (const provider of providers) {
       this.register(provider);
+    }
+    for (const [id, p] of this.#openai) {
+      this.register(p);
     }
   }
 
@@ -92,33 +106,28 @@ export class ProviderRegistry {
     return [...this.#providers.keys()];
   }
 
-  /** Apply persisted + env credentials; safe to call after Settings changes. */
   applySecrets(secrets: ProviderSecretsInput): void {
-    for (const meta of CATALOG) {
+    for (const meta of PROVIDER_CATALOG) {
       if (meta.id === "mock") continue;
-      const provider = this.#providers.get(meta.id);
-      if (!(provider instanceof OpenAICompatibleProvider)) continue;
+      const provider = this.#openai.get(meta.id);
+      if (!provider) continue;
 
       const stored = secrets.providers[meta.id];
-      const envKey = meta.envKey
-        ? (process.env[meta.envKey] ??
-          (meta.id === "openai" ? process.env.SORA_API_KEY : undefined) ??
-          (meta.id === "openrouter" ? process.env.OPENAI_API_KEY : undefined))
-        : undefined;
-
-      const apiKey = stored?.apiKey ?? envKey ?? (meta.id === "ollama" ? "ollama" : "");
-      const baseUrl =
-        stored?.baseUrl ??
-        (meta.id === "ollama"
-          ? `${(process.env.OLLAMA_HOST ?? "http://127.0.0.1:11434").replace(/\/$/, "")}/v1`
-          : meta.defaultBaseUrl);
-
+      const envKey = resolveEnvKey(meta);
+      const apiKey =
+        stored?.apiKey ??
+        envKey ??
+        (meta.id === "ollama" ? "ollama" : "");
+      let baseUrl = stored?.baseUrl ?? meta.defaultBaseUrl;
+      if (meta.id === "ollama") {
+        baseUrl = `${(process.env.OLLAMA_HOST ?? "http://127.0.0.1:11434").replace(/\/$/, "")}/v1`;
+      }
       provider.configure({ apiKey, baseUrl });
     }
   }
 
   status(secrets: ProviderSecretsInput): ProviderStatus[] {
-    return CATALOG.map((meta) => {
+    return PROVIDER_CATALOG.map((meta) => {
       if (meta.id === "mock") {
         return {
           id: meta.id,
@@ -128,21 +137,19 @@ export class ProviderRegistry {
           fromEnv: false,
           needsKey: false,
           baseUrl: "",
+          allowCustomBaseUrl: false,
+          docsUrl: meta.docsUrl ?? null,
           hint: null,
         };
       }
 
       const stored = secrets.providers[meta.id];
-      const envVal = meta.envKey ? process.env[meta.envKey] : undefined;
+      const envVal = resolveEnvKey(meta);
       const fromEnv = Boolean(envVal && !stored?.apiKey);
       const hasKey = Boolean(stored?.apiKey || envVal) || !meta.needsKey;
-      const provider = this.#providers.get(meta.id);
+      const provider = this.#openai.get(meta.id);
       const baseUrl =
-        (provider instanceof OpenAICompatibleProvider
-          ? provider.baseUrl
-          : undefined) ??
-        stored?.baseUrl ??
-        meta.defaultBaseUrl;
+        provider?.baseUrl ?? stored?.baseUrl ?? meta.defaultBaseUrl;
 
       let hint: string | null = null;
       if (stored?.apiKey) {
@@ -160,9 +167,19 @@ export class ProviderRegistry {
         fromEnv,
         needsKey: meta.needsKey,
         baseUrl,
+        allowCustomBaseUrl: meta.allowCustomBaseUrl ?? false,
+        docsUrl: meta.docsUrl ?? null,
         hint,
       };
     });
+  }
+
+  modelCatalog(secrets: ProviderSecretsInput): ModelCatalogResponse {
+    return {
+      providers: this.status(secrets),
+      models: CURATED_MODELS,
+      defaultModel: "",
+    };
   }
 }
 
@@ -170,42 +187,19 @@ export type CreateRegistryOptions = {
   secrets?: ProviderSecretsInput;
 };
 
-/** Default registry: mock + openai + ollama + openrouter. */
 export function createDefaultProviderRegistry(
   options: CreateRegistryOptions = {},
 ): ProviderRegistry {
-  const openai = new OpenAICompatibleProvider({ id: "openai", apiKey: "" });
-  const openrouter = new OpenAICompatibleProvider({
-    id: "openrouter",
-    apiKey: "",
-    baseUrl: "https://openrouter.ai/api/v1",
-    defaultHeaders: {
-      "HTTP-Referer": "https://github.com/sora-runtime/sora",
-      "X-Title": "Sora",
-    },
-  });
-  const ollama = new OpenAICompatibleProvider({
-    id: "ollama",
-    apiKey: "ollama",
-    baseUrl: "http://127.0.0.1:11434/v1",
-  });
-
-  const registry = new ProviderRegistry([
-    new MockProvider(),
-    openai,
-    openrouter,
-    ollama,
-  ]);
+  const registry = new ProviderRegistry([new MockProvider()]);
 
   if (options.secrets) {
     registry.applySecrets(options.secrets);
   } else {
-    registry.applySecrets({
-      version: 1,
-      providers: {},
-      updatedAt: new Date().toISOString(),
-    });
+    registry.applySecrets({ providers: {} });
   }
 
   return registry;
 }
+
+/** @deprecated use PROVIDER_CATALOG */
+export const CATALOG = PROVIDER_CATALOG;
