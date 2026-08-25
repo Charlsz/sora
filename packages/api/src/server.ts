@@ -131,6 +131,41 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
           return json(services.workflows.list(), cors);
         }
 
+        if (url.pathname === "/api/workflows" && req.method === "POST") {
+          const body = (await req.json()) as {
+            name?: string;
+            description?: string;
+            agent?: string;
+            task?: string;
+            skill?: string;
+            cron?: string;
+            webhook?: string;
+            enabled?: boolean;
+          };
+          if (!body.name?.trim() || !body.agent?.trim() || !body.task?.trim()) {
+            return json(
+              { error: "name, agent, and task are required" },
+              cors,
+              400,
+            );
+          }
+          const trigger = body.cron
+            ? { type: "cron" as const, expression: body.cron }
+            : body.webhook
+              ? { type: "webhook" as const, path: body.webhook }
+              : { type: "manual" as const };
+          const wf = services.workflows.create({
+            name: body.name,
+            description: body.description,
+            agent: body.agent,
+            task: body.task,
+            skill: body.skill,
+            trigger,
+            enabled: body.enabled ?? true,
+          });
+          return json(wf, cors, 201);
+        }
+
         const wfRun = /^\/api\/workflows\/([^/]+)\/run$/.exec(url.pathname);
         if (wfRun && req.method === "POST") {
           const slug = decodeURIComponent(wfRun[1]!);
@@ -146,6 +181,41 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
             })),
             cors,
           );
+        }
+
+        if (url.pathname === "/api/plugins" && req.method === "GET") {
+          return json(
+            {
+              plugins: services.plugins.statusAll(services.runtime.secrets),
+            },
+            cors,
+          );
+        }
+
+        const pluginConnect = /^\/api\/plugins\/([^/]+)\/connect$/.exec(
+          url.pathname,
+        );
+        if (pluginConnect && req.method === "POST") {
+          const id = decodeURIComponent(pluginConnect[1]!);
+          const body = (await req.json().catch(() => ({}))) as { app?: string };
+          let plugin;
+          try {
+            plugin = services.plugins.get(id);
+          } catch {
+            return json({ error: `Unknown plugin "${id}"` }, cors, 404);
+          }
+          if (!plugin.connect) {
+            return json(
+              { error: "this plugin does not support connect()" },
+              cors,
+              400,
+            );
+          }
+          const result = await plugin.connect(
+            body.app ?? plugin.apps[0] ?? id,
+            services.runtime.secrets,
+          );
+          return json(result, cors, result.ok ? 200 : 400);
         }
 
         const computerMatch = /^\/api\/agents\/([^/]+)\/computer$/.exec(
