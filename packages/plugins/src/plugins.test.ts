@@ -93,7 +93,14 @@ describe("plugins registry", () => {
   test("default registry includes botdirectory and mcp", () => {
     const registry = createDefaultPluginRegistry();
     const ids = registry.list().map((p) => p.id).sort();
-    expect(ids).toEqual(["botdirectory", "composio", "github", "mcp"]);
+    expect(ids).toEqual([
+      "botdirectory",
+      "composio",
+      "github",
+      "mcp",
+      "openapi",
+      "pipedream",
+    ]);
   });
 
   test("status never includes raw secrets", () => {
