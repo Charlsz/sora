@@ -11,6 +11,10 @@ import {
   type ProviderRegistry,
 } from "@sora/models";
 import {
+  createDefaultPluginRegistry,
+  type PluginRegistry,
+} from "@sora/plugins";
+import {
   createPermissionGate,
   type PermissionGate,
   type PermissionGateOptions,
@@ -41,6 +45,7 @@ export type SoraServices = {
   runner: AgentRunner;
   tools: ToolRegistry;
   providers: ProviderRegistry;
+  plugins: PluginRegistry;
   memory: SqliteMemoryStore;
   conversations: SqliteConversationStore;
   permissions: PermissionGate;
@@ -49,6 +54,7 @@ export type SoraServices = {
   workflows: WorkflowStore;
   workflowEngine: WorkflowEngine;
   reloadProviders: () => void;
+  reloadPlugins: () => void;
 };
 
 export function createSoraServices(
@@ -64,6 +70,22 @@ export function createSoraServices(
   const providers = createDefaultProviderRegistry({
     secrets: runtime.secrets,
   });
+  const plugins = createDefaultPluginRegistry();
+  const pluginToolNames = new Set<string>();
+
+  const reloadPlugins = () => {
+    runtime.ensureInitialized();
+    for (const name of pluginToolNames) {
+      tools.unregister(name);
+    }
+    pluginToolNames.clear();
+    for (const tool of plugins.collectTools(runtime.secrets)) {
+      tools.register(tool);
+      pluginToolNames.add(tool.name);
+    }
+  };
+  reloadPlugins();
+
   const permissions = createPermissionGate({
     events: runtime.events,
     ...options.permissions,
@@ -105,6 +127,7 @@ export function createSoraServices(
   const reloadProviders = () => {
     runtime.ensureInitialized();
     providers.applySecrets(runtime.secrets);
+    reloadPlugins();
   };
 
   return {
@@ -113,6 +136,7 @@ export function createSoraServices(
     runner,
     tools,
     providers,
+    plugins,
     memory,
     conversations,
     permissions,
@@ -121,6 +145,7 @@ export function createSoraServices(
     workflows,
     workflowEngine,
     reloadProviders,
+    reloadPlugins,
   };
 }
 

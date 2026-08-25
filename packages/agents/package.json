@@ -16,6 +16,7 @@
     "@sora/memory": "workspace:*",
     "@sora/models": "workspace:*",
     "@sora/permissions": "workspace:*",
+    "@sora/plugins": "workspace:*",
     "@sora/protocol": "workspace:*",
     "@sora/skills": "workspace:*",
     "@sora/tools": "workspace:*",

@@ -48,6 +48,10 @@ export class ToolRegistry {
     this.#tools.set(tool.name, tool);
   }
 
+  unregister(name: string): void {
+    this.#tools.delete(name);
+  }
+
   get(name: string): Tool {
     const tool = this.#tools.get(name);
     if (!tool) {

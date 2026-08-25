@@ -25,6 +25,7 @@
       "@sora/protocol": ["./packages/protocol/src/index.ts"],
       "@sora/skills": ["./packages/skills/src/index.ts"],
       "@sora/workflows": ["./packages/workflows/src/index.ts"],
+      "@sora/plugins": ["./packages/plugins/src/index.ts"],
       "@sora/api": ["./packages/api/src/index.ts"]
     }
   },
