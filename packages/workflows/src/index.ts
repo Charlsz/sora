@@ -15,6 +15,7 @@ export {
   ManualTriggerHandler,
   WebhookTriggerHandler,
 } from "./triggers/handlers.ts";
+export { stepsFromConversation } from "./demonstration.ts";
 export type {
   CreateWorkflowInput,
   CronTrigger,
@@ -28,5 +29,8 @@ export type {
   WorkflowExecutor,
   WorkflowRun,
   WorkflowRunStatus,
+  WorkflowStep,
+  WorkflowSource,
+  WorkflowToolExecutor,
   WorkflowTrigger,
 } from "./types.ts";

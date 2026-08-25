@@ -152,4 +152,36 @@ describe("WorkflowStore + WorkflowEngine", () => {
     const runs = await engine.handleWebhook({ path: "x" });
     expect(runs).toHaveLength(0);
   });
+
+  test("replays recorded steps without LLM executor", async () => {
+    const executed: string[] = [];
+    const stepEngine = new WorkflowEngine({
+      store,
+      events: runtime.events,
+      executor: {
+        run: async () => {
+          throw new Error("LLM should not run for step replay");
+        },
+      },
+      toolExecutor: {
+        execute: async (input) => {
+          executed.push(input.tool);
+          return { ok: true, output: `did ${input.tool}` };
+        },
+      },
+    });
+    store.create({
+      name: "Demo",
+      agent: "dev",
+      task: "Replay demo",
+      trigger: { type: "manual" },
+      steps: [
+        { tool: "echo", arguments: { text: "one" } },
+        { tool: "echo", arguments: { text: "two" } },
+      ],
+    });
+    const run = await stepEngine.run("demo");
+    expect(run.status).toBe("completed");
+    expect(executed).toEqual(["echo", "echo"]);
+  });
 });

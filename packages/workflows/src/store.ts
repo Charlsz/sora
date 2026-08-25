@@ -41,6 +41,8 @@ export class WorkflowStore {
       agentSlug: input.agent.trim(),
       skill: input.skill?.trim() || undefined,
       task: input.task.trim(),
+      steps: input.steps?.length ? input.steps : undefined,
+      source: input.source ?? "manual",
       trigger: input.trigger,
       enabled: input.enabled ?? true,
       createdAt: now,
@@ -51,8 +53,8 @@ export class WorkflowStore {
       .query(
         `INSERT INTO workflows (
           id, slug, name, description, agent_slug, skill, task,
-          trigger_json, enabled, last_run_at, next_run_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          trigger_json, steps_json, enabled, last_run_at, next_run_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         workflow.id,
@@ -63,6 +65,7 @@ export class WorkflowStore {
         workflow.skill ?? null,
         workflow.task,
         JSON.stringify(workflow.trigger),
+        workflow.steps ? JSON.stringify(workflow.steps) : null,
         workflow.enabled ? 1 : 0,
         null,
         null,
@@ -242,6 +245,15 @@ function validateTrigger(trigger: WorkflowTrigger): void {
 }
 
 function rowToWorkflow(row: Record<string, unknown>): Workflow {
+  const stepsRaw = row.steps_json;
+  let steps: Workflow["steps"];
+  if (stepsRaw) {
+    try {
+      steps = JSON.parse(String(stepsRaw)) as Workflow["steps"];
+    } catch {
+      steps = undefined;
+    }
+  }
   return {
     id: String(row.id),
     slug: String(row.slug),
@@ -250,6 +262,8 @@ function rowToWorkflow(row: Record<string, unknown>): Workflow {
     agentSlug: String(row.agent_slug),
     skill: row.skill ? String(row.skill) : undefined,
     task: String(row.task),
+    steps,
+    source: steps?.length ? "demonstration" : "manual",
     trigger: JSON.parse(String(row.trigger_json)) as WorkflowTrigger,
     enabled: Boolean(row.enabled),
     lastRunAt: row.last_run_at ? String(row.last_run_at) : undefined,

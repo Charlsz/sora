@@ -8,11 +8,13 @@ import type {
   Workflow,
   WorkflowExecutor,
   WorkflowRun,
+  WorkflowToolExecutor,
 } from "./types.ts";
 
 export type WorkflowEngineOptions = {
   store: WorkflowStore;
   executor: WorkflowExecutor;
+  toolExecutor?: WorkflowToolExecutor;
   events: EventBus;
   triggers?: TriggerHandler[];
 };
@@ -25,6 +27,7 @@ export type WorkflowEngineOptions = {
 export class WorkflowEngine {
   readonly store: WorkflowStore;
   #executor: WorkflowExecutor;
+  #toolExecutor: WorkflowToolExecutor | null;
   #events: EventBus;
   #triggers: Map<TriggerType, TriggerHandler>;
   #timer: ReturnType<typeof setInterval> | null = null;
@@ -33,6 +36,7 @@ export class WorkflowEngine {
   constructor(options: WorkflowEngineOptions & { tickMs?: number }) {
     this.store = options.store;
     this.#executor = options.executor;
+    this.#toolExecutor = options.toolExecutor ?? null;
     this.#events = options.events;
     this.#triggers = new Map();
     for (const handler of options.triggers ?? createDefaultTriggerHandlers()) {
@@ -179,6 +183,61 @@ export class WorkflowEngine {
     );
 
     try {
+      if (workflow.steps?.length && this.#toolExecutor) {
+        const outputs: string[] = [];
+        for (let i = 0; i < workflow.steps.length; i++) {
+          const step = workflow.steps[i]!;
+          await this.#events.emit(
+            "workflow.step.started",
+            {
+              runId: run.id,
+              step: `replay.${i + 1}`,
+              tool: step.tool,
+            },
+            "workflows",
+          );
+          const result = await this.#toolExecutor.execute({
+            agentSlug: workflow.agentSlug,
+            tool: step.tool,
+            arguments: step.arguments,
+          });
+          outputs.push(`${step.tool}: ${result.output}`);
+          await this.#events.emit(
+            result.ok ? "workflow.step.completed" : "workflow.step.completed",
+            {
+              runId: run.id,
+              step: `replay.${i + 1}`,
+              output: result.output,
+              ok: result.ok,
+            },
+            "workflows",
+          );
+          if (!result.ok) {
+            throw new Error(result.error ?? `Step ${step.tool} failed`);
+          }
+        }
+        const reply = outputs.join("\n");
+        const finished = this.store.finishRun(run.id, {
+          status: "completed",
+          reply,
+        });
+        this.store.updateSchedule(workflow.id, {
+          lastRunAt: at.toISOString(),
+          nextRunAt: this.#computeNextRun(workflow, at)?.toISOString() ?? null,
+        });
+        await this.#events.emit(
+          "workflow.completed",
+          {
+            workflowId: workflow.id,
+            runId: run.id,
+            slug: workflow.slug,
+            reply,
+          },
+          "workflows",
+        );
+        return finished;
+      }
+
       await this.#events.emit(
         "workflow.step.started",
         {

@@ -1,3 +1,10 @@
+export type WorkflowStep = {
+  tool: string;
+  arguments: Record<string, unknown>;
+};
+
+export type WorkflowSource = "demonstration" | "manual";
+
 export type TriggerType = "manual" | "cron" | "webhook" | "event";
 
 export type ManualTrigger = {
@@ -38,6 +45,8 @@ export type Workflow = {
   agentSlug: string;
   skill?: string;
   task: string;
+  steps?: WorkflowStep[];
+  source?: WorkflowSource;
   trigger: WorkflowTrigger;
   enabled: boolean;
   lastRunAt?: string;
@@ -55,6 +64,8 @@ export type CreateWorkflowInput = {
   trigger: WorkflowTrigger;
   slug?: string;
   enabled?: boolean;
+  steps?: WorkflowStep[];
+  source?: WorkflowSource;
 };
 
 export type WorkflowRunStatus =
@@ -88,6 +99,15 @@ export type WorkflowExecutor = {
     conversationId: string;
     toolCalls: Array<{ name: string; ok: boolean; output: string }>;
   }>;
+};
+
+/** Direct tool execution for demonstration replay (no LLM). */
+export type WorkflowToolExecutor = {
+  execute(input: {
+    agentSlug: string;
+    tool: string;
+    arguments: Record<string, unknown>;
+  }): Promise<{ ok: boolean; output: string; error?: string }>;
 };
 
 export type TriggerContext = {
