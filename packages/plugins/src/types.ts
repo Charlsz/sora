@@ -31,8 +31,7 @@ export type PluginSecrets = {
 };
 
 /**
- * Modular plugin SPI. Built-ins live in builtins/; third-party adapters
- * register the same way without touching the runner.
+ * Plugin SPI: builtins/ register tools; runner stays untouched.
  */
 export interface SoraPlugin {
   readonly id: string;

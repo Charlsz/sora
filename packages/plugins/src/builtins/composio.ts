@@ -8,10 +8,9 @@ import type {
 } from "../types.ts";
 
 /**
- * Composio — same OAuth broker Grok Build docs recommend for GitHub/Slack/Gmail.
- * SOC2 + ISO 27001. User pastes project API key; OAuth redirects for each app.
- * @see https://composio.dev
+ * Composio OAuth broker — link Gmail/Slack/GitHub/etc. Key stays local.
  */
+
 
 const COMPOSIO_BASE =
   process.env.COMPOSIO_BASE_URL?.replace(/\/$/, "") ??
