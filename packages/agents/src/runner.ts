@@ -1,9 +1,14 @@
-import type { EventBus, SoraPaths } from "@sora/core";
-import { ComputerRegistry, LocalComputer } from "@sora/computer";
+import type { EventBus, SoraConfig, SoraPaths, SoraSecrets } from "@sora/core";
+import {
+  ComputerRegistry,
+  createAgentComputer,
+  type Computer,
+} from "@sora/computer";
 import type { ConversationStore, MemoryStore } from "@sora/memory";
 import type {
   ChatMessage,
   ChatToolDefinition,
+  ModelProvider,
   ProviderRegistry,
 } from "@sora/models";
 import type { PermissionGate } from "@sora/permissions";
@@ -52,6 +57,8 @@ export class AgentRunner {
     private readonly paths: SoraPaths,
     private readonly events: EventBus,
     private readonly permissions: PermissionGate,
+    private readonly config: SoraConfig,
+    private readonly secrets: SoraSecrets,
   ) {}
 
   setDelegation(delegation: DelegationService): void {
@@ -62,8 +69,8 @@ export class AgentRunner {
     this.#skills = skills;
   }
 
-  /** Reuse the same LocalComputer (and browser session) for an agent. */
-  getComputer(agent: Agent): LocalComputer {
+  /** Reuse the same computer (and browser session) for an agent. */
+  getComputer(agent: Agent): Computer {
     const id = `agent:${agent.slug}`;
     return this.computers.getOrCreate(id, () => {
       const workspacePath = this.paths.agent(agent.slug).workspace;
@@ -71,12 +78,34 @@ export class AgentRunner {
         this.paths.agent(agent.slug).root,
         "browser-profile",
       );
-      return new LocalComputer({
+      return createAgentComputer({
         id,
         workspaceRoot: workspacePath,
         browserProfileDir: profileDir,
+        config: this.config,
+        secrets: this.secrets,
       });
-    }) as LocalComputer;
+    });
+  }
+
+  /** Direct tool execution for workflow step replay. */
+  async executeToolForWorkflow(
+    agentSlug: string,
+    tool: string,
+    args: Record<string, unknown>,
+  ): Promise<{ ok: boolean; output: string; error?: string }> {
+    const agent = this.agents.requireBySlugOrName(agentSlug);
+    const result = await this.#executeTool(
+      agent,
+      tool,
+      JSON.stringify(args),
+      null,
+    );
+    return {
+      ok: result.ok,
+      output: result.output,
+      error: result.error,
+    };
   }
 
   async dispose(): Promise<void> {
@@ -152,13 +181,14 @@ export class AgentRunner {
       let activeSkill = skillInvocation;
 
       for (let round = 0; round <= maxToolRounds; round++) {
-        const response = await provider.chat({
+        const assistant = await this.#streamAssistantRound({
+          provider,
           model,
           messages,
           tools: toolDefs.length ? toolDefs : undefined,
+          agent,
+          conversationId: conversation.id,
         });
-
-        const assistant = response.message;
         messages.push(assistant);
 
         if (assistant.toolCalls?.length) {
@@ -273,11 +303,13 @@ export class AgentRunner {
       }
 
       this.#endRun(agent.id, "idle");
+      await this.#maybeExtractMemory(agent, prompt, reply);
       await this.events.emit(
         "agent.completed",
         {
           agentId: agent.id,
           slug: agent.slug,
+          conversationId: conversation.id,
           reply,
           skill: activeSkill?.skill.id,
         },
@@ -505,7 +537,91 @@ export class AgentRunner {
       workspacePath,
       computer,
       permissions: this.permissions,
+      memory: this.memory,
       delegation: this.#delegation ?? undefined,
     });
+  }
+
+  async #streamAssistantRound(input: {
+    provider: ModelProvider;
+    model: string;
+    messages: ChatMessage[];
+    tools?: ChatToolDefinition[];
+    agent: Agent;
+    conversationId: string;
+  }): Promise<ChatMessage> {
+    const streamId = crypto.randomUUID();
+    let content = "";
+    let assistant: ChatMessage = { role: "assistant", content: null };
+
+    await this.events.emit(
+      "agent.text.started",
+      {
+        agentId: input.agent.id,
+        slug: input.agent.slug,
+        conversationId: input.conversationId,
+        streamId,
+      },
+      "agents",
+    );
+
+    for await (const chunk of input.provider.stream({
+      model: input.model,
+      messages: input.messages,
+      tools: input.tools,
+    })) {
+      if (chunk.type === "text") {
+        content += chunk.text;
+        await this.events.emit(
+          "agent.text.delta",
+          {
+            agentId: input.agent.id,
+            streamId,
+            delta: chunk.text,
+          },
+          "agents",
+        );
+      } else if (chunk.type === "done") {
+        assistant = chunk.response.message;
+        if (!assistant.content && content) {
+          assistant = { ...assistant, content };
+        }
+      }
+    }
+
+    await this.events.emit(
+      "agent.text.done",
+      {
+        agentId: input.agent.id,
+        streamId,
+        content: assistant.content ?? content,
+      },
+      "agents",
+    );
+
+    return assistant;
+  }
+
+  async #maybeExtractMemory(
+    agent: Agent,
+    userPrompt: string,
+    reply: string,
+  ): Promise<void> {
+    const combined = `${userPrompt}\n${reply}`.toLowerCase();
+    if (!/\b(remember|memorize|don't forget|note that)\b/.test(combined)) {
+      return;
+    }
+    const content = (reply.trim() || userPrompt.trim()).slice(0, 500);
+    if (!content) return;
+    const record = await this.memory.save({
+      agentId: agent.id,
+      kind: "fact",
+      content,
+    });
+    await this.events.emit(
+      "memory.saved",
+      { agentId: agent.id, memoryId: record.id, content: record.content },
+      "memory",
+    );
   }
 }

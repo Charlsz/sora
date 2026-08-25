@@ -79,7 +79,10 @@ export class MockProvider implements ModelProvider {
     const response = await this.chat(request);
     const text = response.message.content ?? "";
     if (text) {
-      yield { type: "text", text };
+      const parts = text.split(/(\s+)/);
+      for (const part of parts) {
+        if (part) yield { type: "text", text: part };
+      }
     }
     if (response.message.toolCalls) {
       for (const toolCall of response.message.toolCalls) {

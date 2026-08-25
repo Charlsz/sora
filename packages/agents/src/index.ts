@@ -106,6 +106,8 @@ export function createSoraServices(
     runtime.paths,
     runtime.events,
     permissions,
+    runtime.config,
+    runtime.secrets,
   );
   const delegation = new DelegationService({
     agents,
@@ -121,6 +123,14 @@ export function createSoraServices(
     events: runtime.events,
     executor: {
       run: (input) => runner.run(input),
+    },
+    toolExecutor: {
+      execute: (input) =>
+        runner.executeToolForWorkflow(
+          input.agentSlug,
+          input.tool,
+          input.arguments,
+        ),
     },
   });
 

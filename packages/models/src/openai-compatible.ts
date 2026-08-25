@@ -75,15 +75,106 @@ export class OpenAICompatibleProvider implements ModelProvider {
   }
 
   async *stream(request: ChatRequest): AsyncIterable<StreamChunk> {
-    // Phase 1: non-streaming under the hood; keep the async iterable API stable.
-    const response = await this.chat(request);
-    const text = response.message.content ?? "";
-    if (text) yield { type: "text", text };
-    if (response.message.toolCalls) {
-      for (const toolCall of response.message.toolCalls) {
+    const body = { ...this.#toRequestBody(request), stream: true };
+    const res = await this.#postStream("/chat/completions", body);
+    if (!res.body) {
+      throw new Error("Model provider returned no stream body");
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let content = "";
+    const toolCalls = new Map<
+      number,
+      { id: string; name: string; arguments: string }
+    >();
+    let finishReason: ChatResponse["finishReason"] = "stop";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let lineBreak = buffer.indexOf("\n");
+      while (lineBreak >= 0) {
+        const line = buffer.slice(0, lineBreak).trim();
+        buffer = buffer.slice(lineBreak + 1);
+        lineBreak = buffer.indexOf("\n");
+
+        if (!line.startsWith("data:")) continue;
+        const data = line.slice(5).trim();
+        if (!data || data === "[DONE]") continue;
+
+        let json: any;
+        try {
+          json = JSON.parse(data);
+        } catch {
+          continue;
+        }
+
+        const choice = json.choices?.[0];
+        const delta = choice?.delta;
+        if (!delta) continue;
+
+        if (typeof delta.content === "string" && delta.content) {
+          content += delta.content;
+          yield { type: "text", text: delta.content };
+        }
+
+        if (delta.tool_calls?.length) {
+          for (const tc of delta.tool_calls) {
+            const index = tc.index ?? 0;
+            let entry = toolCalls.get(index);
+            if (!entry) {
+              entry = {
+                id: tc.id ?? "",
+                name: tc.function?.name ?? "",
+                arguments: "",
+              };
+              toolCalls.set(index, entry);
+            }
+            if (tc.id) entry.id = tc.id;
+            if (tc.function?.name) entry.name = tc.function.name;
+            if (tc.function?.arguments) {
+              entry.arguments += tc.function.arguments;
+            }
+          }
+        }
+
+        if (choice.finish_reason === "tool_calls") {
+          finishReason = "tool_calls";
+        } else if (choice.finish_reason === "length") {
+          finishReason = "length";
+        } else if (choice.finish_reason === "stop") {
+          finishReason = "stop";
+        }
+      }
+    }
+
+    const toolCallList: ToolCall[] = [...toolCalls.values()]
+      .filter((tc) => tc.id && tc.name)
+      .map((tc) => ({
+        id: tc.id,
+        name: tc.name,
+        arguments: tc.arguments || "{}",
+      }));
+
+    const response: ChatResponse = {
+      message: {
+        role: "assistant",
+        content: content || null,
+        toolCalls: toolCallList.length ? toolCallList : undefined,
+      },
+      finishReason: toolCallList.length ? "tool_calls" : finishReason,
+    };
+
+    if (toolCallList.length) {
+      for (const toolCall of toolCallList) {
         yield { type: "tool_call", toolCall };
       }
     }
+
     yield { type: "done", response };
   }
 
@@ -98,6 +189,31 @@ export class OpenAICompatibleProvider implements ModelProvider {
   }
 
   async #post(path: string, body: Record<string, unknown>): Promise<any> {
+    const res = await this.#fetch(path, body, false);
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Model provider error (${res.status}): ${errText}`);
+    }
+    return res.json();
+  }
+
+  async #postStream(
+    path: string,
+    body: Record<string, unknown>,
+  ): Promise<Response> {
+    const res = await this.#fetch(path, body, true);
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Model provider error (${res.status}): ${errText}`);
+    }
+    return res;
+  }
+
+  async #fetch(
+    path: string,
+    body: Record<string, unknown>,
+    stream: boolean,
+  ): Promise<Response> {
     if (
       !this.#apiKey &&
       !this.#baseUrl.includes("localhost") &&
@@ -115,19 +231,15 @@ export class OpenAICompatibleProvider implements ModelProvider {
     if (this.#apiKey) {
       headers.authorization = `Bearer ${this.#apiKey}`;
     }
+    if (stream) {
+      headers.accept = "text/event-stream";
+    }
 
-    const res = await fetch(`${this.#baseUrl}${path}`, {
+    return fetch(`${this.#baseUrl}${path}`, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
     });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Model provider error (${res.status}): ${errText}`);
-    }
-
-    return res.json();
   }
 
   #fromResponse(json: any): ChatResponse {
