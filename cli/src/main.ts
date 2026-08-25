@@ -39,6 +39,7 @@ Commands:
   model get                    Show default model
   model set <provider:model>   Set default model (e.g. openrouter:openai/gpt-4o-mini)
   start                        Start local API server (for the web UI)
+  desktop                      Open Sora (Tauri desktop)
   version                      Print version
   help                         Show this help
 
@@ -60,6 +61,7 @@ Options:
 
 Examples:
   bun run sora init
+  bun run desktop
   bun run sora provider set openrouter --key sk-or-...
   bun run sora model set openrouter:openai/gpt-4o-mini
   bun run sora provider set github --key ghp_...
@@ -154,6 +156,11 @@ export async function main(argv: string[]): Promise<void> {
       return;
     }
 
+    case "desktop": {
+      await handleDesktop(flags);
+      return;
+    }
+
     default:
       console.error(`Unknown command: ${command}`);
       console.log(HELP);
@@ -180,8 +187,7 @@ async function handleStart(flags: Flags): Promise<void> {
     }
   }
 
-  // Interactive ask by default so the workspace UI can approve tools.
-  // Pass --yes (or SORA_AUTO_APPROVE=1) for headless auto-approve.
+  // Interactive ask by default. Pass --yes for headless auto-approve.
   const autoApprove =
     Boolean(flags.yes || flags.y) ||
     process.env.SORA_AUTO_APPROVE === "1" ||
@@ -213,14 +219,12 @@ async function handleStart(flags: Flags): Promise<void> {
     permissionAsk,
   });
 
-  console.log(`Sora API listening on ${server.url}`);
-  console.log(`UI: ${server.url} (build apps/web or use bun run dev:web)`);
+  console.log(`Sora ${server.url}`);
   console.log(
     autoApprove
       ? "Permissions: auto-approve (--yes)"
-      : "Permissions: interactive (approve in the UI)",
+      : "Permissions: interactive",
   );
-  console.log("Press Ctrl+C to stop");
 
   const shutdown = () => {
     server.stop();
@@ -229,8 +233,22 @@ async function handleStart(flags: Flags): Promise<void> {
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 
-  // Keep process alive
   await new Promise(() => {});
+}
+
+async function handleDesktop(flags: Flags): Promise<void> {
+  const { spawn } = await import("node:child_process");
+  const root = resolve(import.meta.dir, "../..");
+  const child = spawn("bun", ["--filter", "@sora/desktop", "dev"], {
+    cwd: root,
+    stdio: "inherit",
+    shell: true,
+    env: process.env,
+  });
+  const code: number = await new Promise((resolve) => {
+    child.on("exit", (c) => resolve(c ?? 1));
+  });
+  process.exitCode = code;
 }
 
 async function handleSkill(args: string[], flags: Flags): Promise<void> {

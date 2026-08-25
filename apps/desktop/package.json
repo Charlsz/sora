@@ -1,0 +1,17 @@
+{
+  "name": "@sora/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bunx tauri dev --runner cargo-xwin",
+    "dev": "bunx tauri dev --runner cargo-xwin",
+    "build": "bunx tauri build --runner cargo-xwin"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2"
+  }
+}

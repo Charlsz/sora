@@ -10,3 +10,5 @@ dist/
 .sora-local/
 coverage/
 .turbo/
+
+apps/desktop/src-tauri/target/
