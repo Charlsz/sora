@@ -15,6 +15,14 @@ export {
   type McpConfigFile,
   type McpServerConfig,
 } from "./mcp-config.ts";
+export {
+  EMPTY_OPENAPI_CONFIG,
+  loadOpenApiConfig,
+  publicOpenApiSpecs,
+  saveOpenApiConfig,
+  type OpenApiConfigFile,
+  type OpenApiSpecConfig,
+} from "./openapi-config.ts";
 export { getPaths, getSoraHome, type SoraPaths } from "./paths.ts";
 export { SoraRuntime, type RuntimeOptions } from "./runtime.ts";
 export {

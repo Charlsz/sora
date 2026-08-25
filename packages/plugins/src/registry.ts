@@ -3,6 +3,8 @@ import { composioPlugin } from "./builtins/composio.ts";
 import { botdirectoryPlugin } from "./builtins/botdirectory.ts";
 import { githubPlugin } from "./builtins/github.ts";
 import { mcpPlugin } from "./builtins/mcp.ts";
+import { openapiPlugin } from "./builtins/openapi.ts";
+import { pipedreamPlugin } from "./builtins/pipedream.ts";
 import type { PluginSecrets, PluginStatus, SoraPlugin } from "./types.ts";
 
 export class PluginRegistry {
@@ -57,6 +59,8 @@ export function createDefaultPluginRegistry(): PluginRegistry {
   return new PluginRegistry([
     githubPlugin,
     composioPlugin,
+    pipedreamPlugin,
+    openapiPlugin,
     botdirectoryPlugin,
     mcpPlugin,
   ]);

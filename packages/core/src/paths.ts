@@ -16,6 +16,8 @@ export function getPaths(home = getSoraHome()) {
     secrets: join(home, "secrets.json"),
     /** User-installed MCP servers (stdio / http). */
     mcp: join(home, "mcp.json"),
+    /** Imported OpenAPI 3 specs. */
+    openapi: join(home, "openapi.json"),
     /** Local mirror of botdirectory.ai catalog. */
     botdirectoryDir: join(home, "botdirectory"),
     botdirectoryCatalog: join(home, "botdirectory", "catalog.json"),
