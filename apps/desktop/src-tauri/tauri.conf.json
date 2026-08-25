@@ -6,10 +6,11 @@
   "build": {
     "beforeDevCommand": "bun --filter @sora/web dev",
     "devUrl": "http://127.0.0.1:5173",
-    "beforeBuildCommand": "bun --filter @sora/web build",
+    "beforeBuildCommand": "bun run scripts/build-sidecar.ts && bun --filter @sora/web build",
     "frontendDist": "../web/dist"
   },
   "app": {
+    "withGlobalTauri": false,
     "windows": [
       {
         "title": "Sora",
@@ -18,23 +19,38 @@
         "minWidth": 960,
         "minHeight": 640,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "decorations": true,
+        "transparent": false
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:* http://localhost:*; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'"
     }
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis", "msi", "app", "dmg"],
+    "externalBin": ["binaries/sora-runtime"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "hardenedRuntime": true,
+      "signingIdentity": null,
+      "providerShortName": null,
+      "entitlements": null
+    }
   },
   "plugins": {
     "shell": {

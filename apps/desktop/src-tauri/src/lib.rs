@@ -1,6 +1,6 @@
 ﻿use std::io::{Read, Write};
 use std::net::TcpStream;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::thread;
@@ -33,17 +33,75 @@ fn api_up(port: &str) -> bool {
   }
 }
 
-fn start_api(root: &PathBuf, port: &str) -> Option<Child> {
+fn sidecar_args(port: &str) -> Vec<String> {
+  vec!["start".into(), "--port".into(), port.into()]
+}
+
+/** Prefer compiled sidecar; fall back to repo `bun` while developing. */
+fn resolve_runtime(
+  app: &tauri::AppHandle,
+  port: &str,
+) -> (PathBuf, Vec<String>, Option<PathBuf>) {
+  let args = sidecar_args(port);
+
+  if let Ok(exe) = std::env::current_exe() {
+    if let Some(dir) = exe.parent() {
+      for name in ["sora-runtime.exe", "sora-runtime"] {
+        let candidate = dir.join(name);
+        if candidate.is_file() {
+          return (candidate, args, None);
+        }
+      }
+    }
+  }
+
+  if let Ok(resource) = app.path().resource_dir() {
+    for name in ["sora-runtime.exe", "sora-runtime"] {
+      let candidate = resource.join(name);
+      if candidate.is_file() {
+        return (candidate, args.clone(), None);
+      }
+    }
+  }
+
+  let root = repo_root();
+  let sidecar_dev = root.join("apps/desktop/src-tauri/binaries");
+  if let Ok(entries) = std::fs::read_dir(&sidecar_dev) {
+    for entry in entries.flatten() {
+      let name = entry.file_name().to_string_lossy().into_owned();
+      if name.starts_with("sora-runtime") && !name.contains("gitignore") {
+        return (entry.path(), args, None);
+      }
+    }
+  }
+
+  (
+    PathBuf::from("bun"),
+    vec![
+      "cli/src/bin.ts".into(),
+      "start".into(),
+      "--port".into(),
+      port.into(),
+    ],
+    Some(root),
+  )
+}
+
+fn spawn_runtime(bin: &Path, args: &[String], cwd: Option<&Path>) -> Option<Child> {
+  let mut cmd = Command::new(bin);
+  cmd.args(args).stdout(Stdio::inherit()).stderr(Stdio::inherit());
+  if let Some(dir) = cwd {
+    cmd.current_dir(dir);
+  }
+  cmd.spawn().ok()
+}
+
+fn start_api(app: &tauri::AppHandle, port: &str) -> Option<Child> {
   if api_up(port) {
     return None;
   }
-  let child = Command::new("bun")
-    .args(["cli/src/bin.ts", "start", "--port", port])
-    .current_dir(root)
-    .stdout(Stdio::inherit())
-    .stderr(Stdio::inherit())
-    .spawn()
-    .ok()?;
+  let (bin, args, cwd) = resolve_runtime(app, port);
+  let child = spawn_runtime(&bin, &args, cwd.as_deref())?;
   for _ in 0..80 {
     if api_up(port) {
       return Some(child);
@@ -67,12 +125,11 @@ fn kill_api(app: &tauri::AppHandle) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   let port = std::env::var("SORA_PORT").unwrap_or_else(|_| "7420".into());
-  let root = repo_root();
 
   tauri::Builder::default()
     .plugin(tauri_plugin_shell::init())
     .setup(move |app| {
-      let child = start_api(&root, &port);
+      let child = start_api(app.handle(), &port);
       app.manage(ApiProcess(Mutex::new(child)));
       Ok(())
     })
