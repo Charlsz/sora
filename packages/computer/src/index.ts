@@ -4,6 +4,11 @@ export {
   PlaceholderBrowser,
   type LocalBrowserOptions,
 } from "./browser.ts";
+export {
+  getBrowserInstallStatus,
+  installPlaywrightChromium,
+  type BrowserInstallStatus,
+} from "./browser-install.ts";
 export { LocalFilesystem, joinWorkspace } from "./filesystem.ts";
 export {
   ComputerRegistry,
