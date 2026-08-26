@@ -166,9 +166,9 @@ export default function RoutinesPanel({
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col gap-5">
       <div>
-        <h2 className="text-[15px] font-semibold text-ink">Routines</h2>
+        <h2 className="text-[15px] font-semibold text-ink">Schedules</h2>
         <p className="mt-0.5 text-[12.5px] text-ink-3">
-          Cron, webhooks, or manual runs. Keep the runtime running for schedules — see docs/always-on.md.
+          Recurring jobs and webhooks. Keep Sora running for them to fire.
         </p>
       </div>
 

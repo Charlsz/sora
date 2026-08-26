@@ -10,16 +10,16 @@ type ApprovalCardProps = {
 };
 
 const ACTION_LABELS: Record<string, string> = {
-  "fs.write": "Write file",
-  "fs.delete": "Delete file",
-  "terminal.exec": "Run terminal command",
-  "http.request": "Make HTTP request",
-  "browser.navigate": "Navigate browser",
-  "browser.click": "Click in browser",
-  "browser.type": "Type in browser",
-  "browser.screenshot": "Browser screenshot",
-  "browser.close": "Close browser",
-  "agent.delegate": "Delegate to another agent",
+  "fs.write": "Write a file",
+  "fs.delete": "Delete a file",
+  "terminal.exec": "Run a command",
+  "http.request": "Contact a website",
+  "browser.navigate": "Open a web page",
+  "browser.click": "Click in the browser",
+  "browser.type": "Type in the browser",
+  "browser.screenshot": "Take a screenshot",
+  "browser.close": "Close the browser",
+  "agent.delegate": "Ask a teammate for help",
 };
 
 export default function ApprovalCard({ request, onRespond }: ApprovalCardProps) {

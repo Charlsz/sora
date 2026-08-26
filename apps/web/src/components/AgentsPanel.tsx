@@ -90,15 +90,15 @@ export default function AgentsPanel({
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col gap-4">
       <div>
-        <h2 className="text-[15px] font-semibold text-ink">Agents</h2>
+        <h2 className="text-[15px] font-semibold text-ink">Teammates</h2>
         <p className="mt-0.5 text-[12.5px] text-ink-3">
-          Each agent gets its own workspace, browser profile, and memory.
-          Default model: {defaultModel}
+          Create a teammate, then give them tasks from their chat. Default model:{" "}
+          {defaultModel}
         </p>
       </div>
 
       <section className="rounded-card bg-surface px-4 py-3 shadow-card">
-        <h3 className="text-[13px] font-medium text-ink">Create agent</h3>
+        <h3 className="text-[13px] font-medium text-ink">New teammate</h3>
         <div className="mt-3 flex flex-col gap-2">
           <input
             value={name}
@@ -118,7 +118,7 @@ export default function AgentsPanel({
             onClick={() => void create()}
             className="self-start rounded-control bg-ink px-3 py-1.5 text-[12.5px] font-medium text-surface disabled:opacity-50"
           >
-            {busy ? "Creating…" : "Create"}
+            {busy ? "Creating…" : "Create teammate"}
           </button>
         </div>
       </section>

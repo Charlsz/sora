@@ -198,7 +198,7 @@ export default function PluginsPanel({
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col gap-4">
       <div>
-        <h2 className="text-[15px] font-semibold text-ink">Plugins</h2>
+        <h2 className="text-[15px] font-semibold text-ink">Connected apps</h2>
         <p className="mt-0.5 text-[12.5px] text-ink-3">
           Link trusted tools. Keys stay in ~/.sora/secrets.json — never sent
           over SSE or logs.

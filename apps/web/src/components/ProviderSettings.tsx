@@ -15,8 +15,8 @@ export default function ProviderSettings({
 }) {
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [models, setModels] = useState<Record<string, ModelOption[]>>({});
-  const [defaultModel, setDefaultModel] = useState("mock:echo");
-  const [draftModel, setDraftModel] = useState("mock:echo");
+  const [defaultModel, setDefaultModel] = useState("");
+  const [draftModel, setDraftModel] = useState("");
   const [keys, setKeys] = useState<Record<string, string>>({});
   const [baseUrls, setBaseUrls] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
@@ -118,9 +118,10 @@ export default function ProviderSettings({
     <div className="flex h-full min-h-0 w-full max-w-lg flex-col">
       <div className="flex items-center justify-between border-b border-line px-1 pb-3">
         <div>
-          <h2 className="text-[15px] font-semibold text-ink">Models & providers</h2>
+          <h2 className="text-[15px] font-semibold text-ink">Connections</h2>
           <p className="mt-0.5 text-[12.5px] text-ink-3">
-            Anthropic, Gemini, Groq, Azure, xAI, OpenRouter, Ollama, and more. Keys stay in ~/.sora/secrets.json
+            Your AI and sandbox keys — Sora never charges you. Keys stay on this
+            device.
           </p>
         </div>
         {onClose && (

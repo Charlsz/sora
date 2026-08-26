@@ -12,17 +12,15 @@ import {
 import ApprovalCard from "./components/ApprovalCard";
 import AgentsPanel from "./components/AgentsPanel";
 import ComputerPanel from "./components/ComputerPanel";
-import ContextCards from "./components/ContextCards";
-import LoadingState from "./components/LoadingState";
 import Onboarding from "./components/Onboarding";
 import PluginsPanel from "./components/PluginsPanel";
 import PromptBar from "./components/PromptBar";
 import ProviderSettings from "./components/ProviderSettings";
 import RoutinesPanel from "./components/RoutinesPanel";
 import SidebarNav from "./components/SidebarNav";
+import WorkBoard, { type WorkerStatus } from "./components/WorkBoard";
 import StreamingText from "./components/StreamingText";
-import ThinkingState from "./components/ThinkingState";
-import ToolChips, { type ToolRow } from "./components/ToolChips";
+import type { ToolRow } from "./components/ToolChips";
 
 function parseSkillFromPrompt(prompt: string): {
   prompt: string;
@@ -47,10 +45,15 @@ export function App() {
   const [chatTitle, setChatTitle] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [defaultModel, setDefaultModel] = useState<string>("mock:echo");
+  const [defaultModel, setDefaultModel] = useState<string>("");
+  const [aiConnected, setAiConnected] = useState(false);
+  const [computerReady, setComputerReady] = useState(false);
   const [onboardingDone, setOnboardingDone] = useState(false);
   const [saveRoutineBusy, setSaveRoutineBusy] = useState(false);
+  const [computerOpen, setComputerOpen] = useState(true);
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const headerMenuRef = useRef<HTMLDivElement>(null);
 
   const active = useMemo(
     () => agents.find((a) => a.slug === selected) ?? null,
@@ -69,7 +72,21 @@ export function App() {
     setSkills(s);
     setWorkflows(w);
     setPending(p);
-    if (providers) setDefaultModel(providers.defaultModel);
+    if (providers) {
+      setDefaultModel(providers.defaultModel);
+      setAiConnected(
+        providers.providers.some(
+          (p) =>
+            p.configured &&
+            p.id !== "mock" &&
+            p.kind !== "infra" &&
+            (p.needsKey || p.id === "ollama"),
+        ),
+      );
+      setComputerReady(
+        Boolean(providers.providers.find((p) => p.id === "e2b")?.configured),
+      );
+    }
     setSelected((prev) => prev ?? a[0]?.slug ?? null);
   }
 
@@ -103,7 +120,6 @@ export function App() {
           });
         }
       } else if (event.type === "permission.requested") {
-        // Resolved — drop matching pending by agent/action/resource if still listed
         void soraApi.pendingPermissions().then(setPending).catch(() => {});
       } else if (event.type === "agent.text.started") {
         const streamId = String(event.data?.streamId ?? event.id);
@@ -182,6 +198,17 @@ export function App() {
     });
   }, []);
 
+  useEffect(() => {
+    if (!headerMenuOpen) return;
+    const close = (e: PointerEvent) => {
+      if (!headerMenuRef.current?.contains(e.target as Node)) {
+        setHeaderMenuOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [headerMenuOpen]);
+
   async function loadConversation(id: string) {
     setConversationId(id);
     const msgs = await soraApi.messages(id);
@@ -235,7 +262,10 @@ export function App() {
     bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
   }, [live.length, busy, pending.length]);
 
-  const showOnboarding = apiOk && agents.length === 0 && !onboardingDone;
+  const showOnboarding =
+    apiOk &&
+    (!aiConnected || !computerReady || agents.length === 0) &&
+    !onboardingDone;
 
   const toolRows: ToolRow[] = live
     .filter((e): e is Extract<LiveEntry, { kind: "tool" }> => e.kind === "tool")
@@ -248,28 +278,64 @@ export function App() {
       detail: e.detail ? e.detail.split("\n").slice(0, 6) : undefined,
     }));
 
-  const contextChunks = toolRows
-    .filter((r) => r.status === "completed" && r.detail?.length)
-    .map((r) => ({
-      title: r.label,
-      body: r.detail!.join("\n").slice(0, 400),
-      source: r.label,
-      badge: "TOOL",
-      chars: `${r.detail!.join("\n").length} chars`,
-    }));
+  const workerStatus: WorkerStatus = pending.length
+    ? "needs_you"
+    : busy
+      ? "working"
+      : toolRows.some((r) => r.status === "failed") && live.length > 0
+        ? "failed"
+        : live.length > 0 && !busy
+          ? "done"
+          : "idle";
 
-  const recents = [
-    ...agents.map((a) => ({
-      id: `agent:${a.slug}`,
-      label: a.name,
-      prompt: undefined as string | undefined,
-    })),
-    ...workflows.map((w) => ({
-      id: `wf:${w.slug}`,
-      label: w.name,
-      prompt: w.task,
-    })),
-  ];
+  const latestUser = [...live]
+    .reverse()
+    .find((e): e is Extract<LiveEntry, { kind: "user" }> => e.kind === "user");
+  const latestUserTask = latestUser?.content ?? chatTitle;
+
+  /** Teammates, with the selected one’s conversations nested underneath. */
+  const sidebarList = useMemo(() => {
+    const rows: Array<{
+      id: string;
+      label: string;
+      nested?: boolean;
+      status?: string;
+      teammate?: boolean;
+    }> = [];
+    for (const a of agents) {
+      const isActive = a.slug === selected;
+      const status =
+        isActive && workerStatus === "working"
+          ? "Working"
+          : isActive && workerStatus === "needs_you"
+            ? "Needs you"
+            : a.status === "running"
+              ? "Working"
+              : "Idle";
+      rows.push({
+        id: `agent:${a.slug}`,
+        label: a.name,
+        status,
+        teammate: true,
+      });
+      if (isActive) {
+        for (const c of conversations.slice(0, 12)) {
+          rows.push({
+            id: `conv:${c.id}`,
+            label: c.title?.trim() || "Task",
+            nested: true,
+          });
+        }
+      }
+    }
+    return rows;
+  }, [agents, selected, conversations, workerStatus]);
+
+  const activeListId = conversationId
+    ? `conv:${conversationId}`
+    : selected
+      ? `agent:${selected}`
+      : null;
 
   async function saveChatAsRoutine() {
     if (!conversationId || !active || saveRoutineBusy) return;
@@ -282,6 +348,7 @@ export function App() {
     if (!name?.trim()) return;
     setSaveRoutineBusy(true);
     setError(null);
+    setHeaderMenuOpen(false);
     try {
       const result = await soraApi.recordWorkflow({
         conversationId,
@@ -290,7 +357,6 @@ export function App() {
       });
       await refresh();
       setNav("routines");
-      setError(null);
       window.alert(
         `Routine "${result.workflow.name}" saved with ${result.steps} tool step(s).`,
       );
@@ -389,19 +455,15 @@ export function App() {
         <div className="max-w-md text-center">
           <p className="font-display text-3xl text-ink">Sora</p>
           <p className="mt-2 text-[14px] text-ink-2">
-            API is offline. Start the local runtime, then reload.
-          </p>
-          <pre className="mt-4 rounded-card bg-ink px-4 py-3 text-left font-mono text-[12px] text-surface">
-            bun run sora start
-          </pre>
-          <p className="mt-3 text-[12px] text-ink-3">
-            Use <code className="font-mono">--yes</code> only for headless
-            auto-approve.
+            Sora isn’t running yet. Open the desktop app again, or start it from
+            your install folder.
           </p>
         </div>
       </div>
     );
   }
+
+  const showChatChrome = nav === "chats" && !showOnboarding;
 
   return (
     <div className="flex h-full min-h-0">
@@ -409,101 +471,145 @@ export function App() {
         fill
         brand="Sora"
         monogram="S"
-        activeTitle={chatTitle}
+        activeId={nav === "chats" ? activeListId : null}
         activeNav={nav}
         onNavigate={setNav}
-        recents={recents}
-        navItems={[
-          { key: "agents", label: "Agents", count: String(agents.length) },
-          {
-            key: "routines",
-            label: "Routines",
-            count: String(workflows.length),
-          },
-          { key: "plugins", label: "Plugins" },
-          { key: "settings", label: "Models" },
+        listLabel="Teammates"
+        online={apiOk}
+        recents={sidebarList}
+        moreItems={[
+          { key: "routines", label: "Schedules" },
+          { key: "agents", label: "Manage teammates" },
+          { key: "plugins", label: "Connected apps" },
+          { key: "settings", label: "Connections" },
         ]}
-        footerLabel={apiOk ? "Runtime online" : "Connecting…"}
+        footerLabel="Settings"
         onFooterClick={() => setNav("settings")}
         onNewChat={() => {
-          setLive([]);
-          setChatTitle(null);
-          setConversationId(null);
-          setError(null);
-          setNav("chats");
+          setNav("agents");
         }}
         onPick={(id, label) => {
           if (id.startsWith("agent:")) {
             setSelected(id.slice(6));
             setNav("chats");
             setChatTitle(label);
-          } else if (id.startsWith("wf:")) {
-            const slug = id.slice(3);
-            setNav("routines");
-            void soraApi
-              .runWorkflow(slug)
-              .then(() => refresh())
-              .catch((err) =>
-                setError(err instanceof Error ? err.message : String(err)),
-              );
+          } else if (id.startsWith("conv:")) {
+            const cid = id.slice(5);
+            setNav("chats");
+            const conv = conversations.find((c) => c.id === cid);
+            setChatTitle(conv?.title || label);
+            void loadConversation(cid).catch((err) =>
+              setError(err instanceof Error ? err.message : String(err)),
+            );
           }
         }}
       />
 
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="flex shrink-0 items-center justify-between border-b border-line px-5 py-3">
-          <div>
-            <h1 className="text-[15px] font-semibold text-ink">
-              {active?.name ?? "Select an agent"}
+          <div className="min-w-0">
+            <h1 className="truncate text-[15px] font-semibold text-ink">
+              {showOnboarding
+                ? "Welcome"
+                : nav === "routines"
+                  ? "Schedules"
+                  : nav === "agents"
+                    ? "New teammate"
+                    : nav === "plugins"
+                      ? "Connected apps"
+                      : nav === "settings"
+                        ? "Connections"
+                        : (active?.name ?? "Pick a teammate")}
             </h1>
-            <p className="text-[12px] text-ink-3">
-              {active
-                ? `${active.model} · default ${defaultModel}`
-                : `Local-first · ${defaultModel}`}
-            </p>
+            {showChatChrome && active && (
+              <p className="flex items-center gap-1.5 truncate text-[12px] text-ink-3">
+                <span
+                  className={`size-1.5 shrink-0 rounded-full ${
+                    workerStatus === "working"
+                      ? "bg-accent animate-pulse"
+                      : workerStatus === "needs_you"
+                        ? "bg-orange"
+                        : workerStatus === "done"
+                          ? "bg-green"
+                          : "bg-ink-3"
+                  }`}
+                />
+                {workerStatus === "working"
+                  ? "Working"
+                  : workerStatus === "needs_you"
+                    ? "Needs your approval"
+                    : workerStatus === "done"
+                      ? "Done"
+                      : workerStatus === "failed"
+                        ? "Failed"
+                        : "Idle · give them a task"}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-2">
-            {nav === "chats" && conversations.length > 0 && (
-              <select
-                value={conversationId ?? ""}
-                onChange={(e) => {
-                  const id = e.target.value;
-                  if (!id) {
-                    setConversationId(null);
-                    setLive([]);
-                    setChatTitle(null);
-                    return;
-                  }
-                  const conv = conversations.find((c) => c.id === id);
-                  setChatTitle(conv?.title || null);
-                  void loadConversation(id).catch((err) =>
-                    setError(err instanceof Error ? err.message : String(err)),
-                  );
-                }}
-                className="max-w-[11rem] rounded-control border border-line bg-field px-2 py-1.5 text-[12px] text-ink-2"
-                aria-label="Conversation"
-              >
-                <option value="">New chat</option>
-                {conversations.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.title?.trim() || c.id.slice(0, 10)}
-                  </option>
-                ))}
-              </select>
-            )}
-            {nav === "chats" &&
-              conversationId &&
-              toolRows.some((t) => t.status === "completed") && (
+            {showChatChrome && active && (
+              <>
                 <button
                   type="button"
-                  disabled={saveRoutineBusy || busy}
-                  onClick={() => void saveChatAsRoutine()}
-                  className="rounded-control bg-field px-2.5 py-1.5 text-[12px] font-medium text-ink-2 hover:bg-hover disabled:opacity-50"
+                  onClick={() => {
+                    setLive([]);
+                    setChatTitle(null);
+                    setConversationId(null);
+                    setError(null);
+                  }}
+                  className="rounded-control bg-field px-2.5 py-1.5 text-[12px] font-medium text-ink-2 hover:bg-hover"
                 >
-                  {saveRoutineBusy ? "Saving…" : "Save as routine"}
+                  New task
                 </button>
-              )}
-            {busy && <LoadingState label="Agent working" variant="Dots" />}
+                <button
+                  type="button"
+                  onClick={() => setComputerOpen((o) => !o)}
+                  className={`rounded-control px-2.5 py-1.5 text-[12px] font-medium ${
+                    computerOpen
+                      ? "bg-green-tint text-green"
+                      : "bg-field text-ink-2 hover:bg-hover"
+                  }`}
+                >
+                  Computer
+                </button>
+                <div className="relative" ref={headerMenuRef}>
+                  <button
+                    type="button"
+                    aria-label="More actions"
+                    onClick={() => setHeaderMenuOpen((o) => !o)}
+                    className="flex size-8 items-center justify-center rounded-control bg-field text-ink-2 hover:bg-hover"
+                  >
+                    ···
+                  </button>
+                  {headerMenuOpen && (
+                    <div className="absolute top-full right-0 z-40 mt-1 w-48 rounded-[12px] bg-surface p-1 shadow-overlay">
+                      <button
+                        type="button"
+                        disabled={
+                          !conversationId ||
+                          saveRoutineBusy ||
+                          !toolRows.some((t) => t.status === "completed")
+                        }
+                        onClick={() => void saveChatAsRoutine()}
+                        className="flex h-9 w-full items-center rounded-[8px] px-2.5 text-left text-[13px] text-ink-2 hover:bg-hover disabled:opacity-40"
+                      >
+                        Save as schedule
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setHeaderMenuOpen(false);
+                          setNav("agents");
+                        }}
+                        className="flex h-9 w-full items-center rounded-[8px] px-2.5 text-left text-[13px] text-ink-2 hover:bg-hover"
+                      >
+                        Manage teammate
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </header>
 
@@ -545,54 +651,31 @@ export function App() {
           ) : (
             <div className="mx-auto flex w-full max-w-xl flex-col gap-4">
               {live.length === 0 && !busy && (
-                <div className="py-10">
-                  <p className="font-display text-3xl text-ink">Sora</p>
-                  <p className="mt-2 max-w-sm text-[14px] leading-relaxed text-ink-2">
-                    Open-source alternative to closed agent bots. Run agents
-                    locally, approve what they touch, and keep your workspace
-                    yours.
+                <div className="py-16">
+                  <p className="text-[18px] font-semibold text-ink">
+                    {active
+                      ? `Give ${active.name} something to do`
+                      : "Pick a teammate"}
                   </p>
-                  <div className="mt-6">
-                    <ThinkingState
-                      activeLabel="Ready when you are"
-                      doneLabel="Local runtime"
-                      rows={[
-                        { primary: "Permission gate armed" },
-                        { primary: "Skills & tools discovered" },
-                        {
-                          primary: "SSE event stream",
-                          secondary: "live",
-                          mono: true,
-                        },
-                      ]}
-                    />
-                  </div>
+                  <p className="mt-2 max-w-sm text-[13.5px] leading-relaxed text-ink-2">
+                    Assign real work. They use their cloud computer — tools,
+                    browser, files — and come back when they need you.
+                  </p>
                 </div>
               )}
 
-              {live.map((entry) => {
-                if (entry.kind === "user") {
-                  return (
-                    <div key={entry.id} className="flex justify-end pl-10">
-                      <div className="rounded-xl bg-field px-3 py-1.5 text-[13px] leading-[1.4] text-ink">
-                        {entry.content}
-                      </div>
-                    </div>
-                  );
-                }
-                if (entry.kind === "assistant") {
-                  return (
-                    <StreamingText key={entry.id} text={entry.content} />
-                  );
-                }
-                return null;
-              })}
-
-              {toolRows.length > 0 && <ToolChips rows={toolRows} />}
-
-              {busy && live.every((e) => e.kind !== "assistant" || !e.streaming) && (
-                <LoadingState label="Churning" />
-              )}
+              {(busy ||
+                toolRows.length > 0 ||
+                pending.length > 0 ||
+                (live.length > 0 && workerStatus !== "idle")) &&
+                active && (
+                  <WorkBoard
+                    workerName={active.name}
+                    taskTitle={latestUserTask}
+                    status={workerStatus}
+                    rows={toolRows}
+                  />
+                )}
 
               {pending.map((req) => (
                 <ApprovalCard
@@ -603,6 +686,32 @@ export function App() {
                   }
                 />
               ))}
+
+              {live.map((entry) => {
+                if (entry.kind === "user") {
+                  return (
+                    <div key={entry.id} className="flex flex-col gap-1">
+                      <span className="text-[11px] font-medium text-ink-3">
+                        You
+                      </span>
+                      <p className="text-[13.5px] leading-relaxed text-ink">
+                        {entry.content}
+                      </p>
+                    </div>
+                  );
+                }
+                if (entry.kind === "assistant") {
+                  return (
+                    <div key={entry.id} className="flex flex-col gap-1">
+                      <span className="text-[11px] font-medium text-ink-3">
+                        {active?.name ?? "Sora"}
+                      </span>
+                      <StreamingText text={entry.content} />
+                    </div>
+                  );
+                }
+                return null;
+              })}
 
               {error && (
                 <p className="rounded-control bg-red-tint px-3 py-2 text-[13px] text-red">
@@ -615,14 +724,14 @@ export function App() {
           )}
         </div>
 
-        {nav === "chats" && !showOnboarding && (
+        {showChatChrome && (
           <div className="shrink-0 border-t border-line bg-panel/80 px-5 py-3 backdrop-blur">
             <PromptBar
               disabled={busy || !active}
               placeholder={
                 active
-                  ? `Message ${active.name}…  @agent  /skill`
-                  : "Create or select an agent first"
+                  ? `Give ${active.name} a task…`
+                  : "Pick a teammate first"
               }
               agents={agents.map((a) => ({
                 key: a.slug,
@@ -640,7 +749,7 @@ export function App() {
                       {
                         key: active.model,
                         name: active.model,
-                        desc: "Agent model",
+                        desc: "Bot model",
                       },
                       {
                         key: defaultModel,
@@ -677,15 +786,25 @@ export function App() {
         )}
       </main>
 
-      <aside className="hidden w-80 shrink-0 flex-col gap-6 border-l border-line bg-panel/70 p-4 lg:flex">
-        <ComputerPanel agentSlug={selected} />
-        <ContextCards chunks={contextChunks} />
-        {active?.workspace && (
-          <p className="font-mono text-[11px] break-all text-ink-3">
-            {active.workspace}
-          </p>
-        )}
-      </aside>
+      {computerOpen && (
+        <aside className="flex w-[300px] shrink-0 flex-col border-l border-line bg-panel">
+          <div className="scroll-pane min-h-0 flex-1 p-4">
+            <ComputerPanel
+              agentSlug={selected}
+              agentName={active?.name}
+              activityRows={toolRows}
+              connectedHint={workerStatus !== "idle"}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setComputerOpen(false)}
+            className="shrink-0 border-t border-line px-4 py-2 text-left text-[12px] text-ink-3 hover:bg-hover hover:text-ink"
+          >
+            Hide computer
+          </button>
+        </aside>
+      )}
     </div>
   );
 }

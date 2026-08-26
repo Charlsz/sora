@@ -123,6 +123,8 @@ export type ComputerInfo = {
     profileDir?: string;
     headed: boolean;
   };
+  files?: string[];
+  sandbox?: { id?: string; provider?: string } | null;
 };
 
 export type SoraEvent = {
@@ -217,8 +219,11 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(err.error || res.statusText);
+    const err = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      message?: string;
+    };
+    throw new Error(err.message || err.error || res.statusText);
   }
   return res.json() as Promise<T>;
 }
@@ -275,12 +280,21 @@ export const soraApi = {
       ok: boolean;
       watching: boolean;
       frame: {
-        base64: string;
+        base64?: string;
+        streamUrl?: string;
         width?: number;
         height?: number;
         updatedAt?: string;
       } | null;
     }>(`/api/agents/${encodeURIComponent(slug)}/computer/display`),
+  computerTakeover: (slug: string) =>
+    api<{
+      ok: boolean;
+      streamUrl?: string;
+      message: string;
+    }>(`/api/agents/${encodeURIComponent(slug)}/computer/takeover`, {
+      method: "POST",
+    }),
   createWorkflow: (body: {
     name: string;
     agent: string;
@@ -463,6 +477,7 @@ export const soraApi = {
   getConfig: () =>
     api<{
       defaultModel: string;
+      displayName?: string | null;
       browser: "on" | "off";
       computer?: {
         provider: string;
@@ -482,6 +497,7 @@ export const soraApi = {
     }>("/api/config"),
   setConfig: (body: {
     defaultModel?: string;
+    displayName?: string;
     browser?: "on" | "off";
     computer?: {
       provider?: string;
@@ -500,6 +516,7 @@ export const soraApi = {
   }) =>
     api<{
       defaultModel: string;
+      displayName?: string | null;
       browser: "on" | "off";
       computer?: {
         provider: string;
