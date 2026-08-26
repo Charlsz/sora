@@ -54,6 +54,7 @@ export default function PromptBar({
   variant = "Rounded",
   placeholder = "Message an agent…  @agent  /skill",
   disabled = false,
+  sending = false,
   agents = [],
   skills = [],
   models = [],
@@ -67,6 +68,8 @@ export default function PromptBar({
   variant?: string;
   placeholder?: string;
   disabled?: boolean;
+  /** Agent is running — still allow typing; only block send. */
+  sending?: boolean;
   agents?: PromptMenuItem[];
   skills?: PromptMenuItem[];
   models?: PromptMenuItem[];
@@ -163,11 +166,12 @@ export default function PromptBar({
     const input = inputRef.current;
     const controls = controlsRef.current;
     const measure = measureRef.current;
-    const modelButton = modelRef.current;
-    if (!input || !controls || !measure || !modelButton) return;
+    if (!input || !controls || !measure) return;
 
-    const fixedControlsWidth = 28 * 2 + modelButton.offsetWidth;
-    const inlineGaps = 4 * 3;
+    const modelButton = modelRef.current;
+    const modelWidth = modelButton?.offsetWidth ?? 0;
+    const fixedControlsWidth = 28 * 2 + modelWidth;
+    const inlineGaps = 4 * (modelButton ? 3 : 2);
     const inlineInputWidth =
       controls.clientWidth - fixedControlsWidth - inlineGaps;
     const needsFullWidth =
@@ -180,7 +184,7 @@ export default function PromptBar({
     const contentHeight = input.scrollHeight;
     input.style.height = `${Math.min(Math.max(contentHeight, minHeight), maxHeight)}px`;
     input.style.overflowY = contentHeight > maxHeight ? "auto" : "hidden";
-  }, [draft, expanded]);
+  }, [draft, expanded, models.length]);
 
   useEffect(() => {
     if (!modelOpen && !plusOpen) return;
@@ -211,7 +215,7 @@ export default function PromptBar({
     inputRef.current?.focus();
   };
 
-  const canSend = draft.trim().length > 0 && !disabled;
+  const canSend = draft.trim().length > 0 && !disabled && !sending;
   const send = () => {
     if (!canSend) return;
     onSend?.(draft.trim());

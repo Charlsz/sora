@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { openExternalUrl } from "../openExternal";
 import { soraApi } from "../api";
 
 export type ComputerRunMode = "local" | "sandbox" | "off";
@@ -15,13 +14,20 @@ export default function ComputerPanel({
   agentSlug,
   agentName,
   working = false,
+  compact = false,
+  fillWindow = false,
   onClose,
+  onControlChange,
 }: {
   agentSlug: string | null;
   agentName?: string | null;
-  /** When true, show the current folder/path the bot is in. */
   working?: boolean;
+  /** Right-rail layout: screen card + Open overlay (reference chat UI). */
+  compact?: boolean;
+  /** When controlling, stretch the stream to fill available space. */
+  fillWindow?: boolean;
   onClose?: () => void;
+  onControlChange?: (streamUrl: string | null) => void;
 }) {
   const [shot, setShot] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -31,6 +37,7 @@ export default function ComputerPanel({
   const [connected, setConnected] = useState(false);
   const [mode, setMode] = useState<ComputerRunMode>("sandbox");
   const [taskPath, setTaskPath] = useState<string | null>(null);
+  const [controlUrl, setControlUrl] = useState<string | null>(null);
 
   async function ensureCloudComputer() {
     const providers = await soraApi.providers().catch(() => null);
@@ -65,8 +72,17 @@ export default function ComputerPanel({
   }, [agentSlug]);
 
   useEffect(() => {
-    if (mode !== "sandbox" || !agentSlug || !computerReady) {
-      setShot(null);
+    setControlUrl(null);
+    onControlChange?.(null);
+  }, [agentSlug]);
+
+  useEffect(() => {
+    onControlChange?.(controlUrl);
+  }, [controlUrl]);
+
+  useEffect(() => {
+    if (mode !== "sandbox" || !agentSlug || !computerReady || controlUrl) {
+      if (mode !== "sandbox" || !agentSlug || !computerReady) setShot(null);
       return;
     }
     let cancelled = false;
@@ -100,12 +116,13 @@ export default function ComputerPanel({
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [mode, agentSlug, computerReady]);
+  }, [mode, agentSlug, computerReady, controlUrl]);
 
   async function setRunMode(next: ComputerRunMode) {
     setMode(next);
     setError(null);
     setBusy(true);
+    setControlUrl(null);
     try {
       if (next === "sandbox") {
         await soraApi.setConfig({
@@ -156,7 +173,7 @@ export default function ComputerPanel({
   async function openDesktop() {
     if (!agentSlug) return;
     if (mode !== "sandbox") {
-      setError("Set Runs on → Sandbox first, then Take control.");
+      setError("Set Runs on → Sandbox first, then Open.");
       return;
     }
     setBusy(true);
@@ -168,7 +185,6 @@ export default function ComputerPanel({
         setError("Add an E2B key under Connected apps so the sandbox can start.");
         return;
       }
-      // Warm the desktop stream (screenshot poll) before takeover.
       await soraApi.computerDisplay(agentSlug).catch(() => null);
       const result = await soraApi.computerTakeover(agentSlug);
       if (!result.ok || !result.streamUrl) {
@@ -180,7 +196,7 @@ export default function ComputerPanel({
         return;
       }
       setConnected(true);
-      await openExternalUrl(result.streamUrl);
+      setControlUrl(result.streamUrl);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -198,6 +214,128 @@ export default function ComputerPanel({
   }
 
   const name = agentName ?? "Teammate";
+  const canOpen = mode === "sandbox" && computerReady && !controlUrl;
+  const runsOn: Array<{ id: ComputerRunMode; label: string }> = [
+    { id: "local", label: "This PC" },
+    { id: "sandbox", label: "Sandbox" },
+    { id: "off", label: "Off" },
+  ];
+
+  const screenInner =
+    mode === "off" ? (
+      <p className="px-4 text-center text-[13px] text-ink-3">Computer is off</p>
+    ) : mode === "local" ? (
+      <p className="px-4 text-center text-[13px] text-ink-3">Running on this PC</p>
+    ) : controlUrl ? (
+      <iframe
+        title={`${name} desktop`}
+        src={controlUrl}
+        className="h-full w-full border-0 bg-black"
+        allow="clipboard-read; clipboard-write; fullscreen"
+        referrerPolicy="no-referrer"
+      />
+    ) : shot ? (
+      <img
+        src={`data:image/png;base64,${shot}`}
+        alt="Live desktop"
+        className="h-full w-full object-cover object-top"
+      />
+    ) : (
+      <p className="px-4 text-center text-[13px] text-ink-3">
+        {booting
+          ? "starting…"
+          : computerReady
+            ? "live desktop"
+            : "needs E2B key"}
+      </p>
+    );
+
+  if (compact) {
+    return (
+      <div
+        className={`flex min-h-0 flex-col gap-2 ${
+          fillWindow ? "h-full flex-1" : ""
+        }`}
+      >
+        <div className="flex shrink-0 items-center justify-between gap-2 px-0.5">
+          <p className="truncate text-[13px] font-medium text-ink">
+            {name}&apos;s screen
+          </p>
+          {controlUrl && (
+            <button
+              type="button"
+              onClick={() => setControlUrl(null)}
+              className="shrink-0 text-[12px] font-medium text-ink-3 hover:text-ink"
+            >
+              Exit
+            </button>
+          )}
+        </div>
+
+        <div
+          className={`relative flex w-full items-center justify-center overflow-hidden rounded-[12px] border border-line bg-inset ${
+            fillWindow && controlUrl
+              ? "min-h-0 flex-1"
+              : "aspect-[16/10]"
+          } ${mode === "off" ? "opacity-50" : ""}`}
+        >
+          {screenInner}
+
+          {canOpen && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void openDesktop()}
+              className="absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 rounded-full bg-surface/95 px-3.5 py-1.5 text-[13px] font-medium text-ink shadow-raised backdrop-blur-sm hover:bg-surface disabled:opacity-50"
+            >
+              {busy ? "Opening…" : "Open"}
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                aria-hidden
+              >
+                <path d="M7 17L17 7M7 7h10v10" />
+              </svg>
+            </button>
+          )}
+        </div>
+
+        {!controlUrl && (
+          <div className="flex shrink-0 overflow-hidden rounded-[8px] border border-line">
+            {runsOn.map((opt, i) => (
+              <button
+                key={opt.id}
+                type="button"
+                disabled={busy}
+                onClick={() => void setRunMode(opt.id)}
+                className={`flex-1 py-1 text-[11px] font-medium disabled:opacity-50 ${
+                  i > 0 ? "border-l border-line" : ""
+                } ${
+                  mode === opt.id
+                    ? "bg-field text-ink"
+                    : "text-ink-3 hover:bg-hover hover:text-ink-2"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {error && (
+          <p className="rounded-control bg-red-tint px-2.5 py-1.5 text-[11.5px] text-red">
+            {error}
+          </p>
+        )}
+      </div>
+    );
+  }
+
   const statusLabel =
     mode === "off"
       ? "Off"
@@ -205,26 +343,22 @@ export default function ComputerPanel({
         ? "This PC"
         : !computerReady
           ? "Needs setup"
-          : connected
-            ? "Connected"
-            : booting
-              ? "Starting…"
-              : "Ready";
+          : controlUrl
+            ? "In control"
+            : connected
+              ? "Connected"
+              : booting
+                ? "Starting…"
+                : "Ready";
 
   const statusDot =
     mode === "off"
       ? "bg-ink-3"
-      : connected
+      : controlUrl || connected
         ? "bg-green"
         : booting
           ? "bg-accent animate-pulse"
           : "bg-ink-3";
-
-  const runsOn: Array<{ id: ComputerRunMode; label: string }> = [
-    { id: "local", label: "This PC" },
-    { id: "sandbox", label: "Sandbox" },
-    { id: "off", label: "Off" },
-  ];
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-5">
@@ -254,40 +388,36 @@ export default function ComputerPanel({
           <p className="text-[13px] text-ink-2">
             Add an E2B key under Connections so {name} gets a cloud sandbox.
           </p>
-          <a
-            href="https://e2b.dev/docs/api-key"
-            target="_blank"
-            rel="noreferrer"
-            className="text-[12px] text-ink-3 underline hover:text-ink-2"
-          >
-            Get a sandbox key
-          </a>
         </div>
       ) : (
         <>
           <div
-            className={`relative flex aspect-[16/10] w-full items-center justify-center overflow-hidden rounded-[10px] border border-line bg-inset ${
-              mode === "off" ? "opacity-50" : ""
-            }`}
+            className={`relative flex w-full items-center justify-center overflow-hidden rounded-[10px] border border-line bg-inset ${
+              controlUrl ? "aspect-[4/3] min-h-[220px]" : "aspect-[16/10]"
+            } ${mode === "off" ? "opacity-50" : ""}`}
           >
-            {mode === "off" ? (
-              <p className="px-4 text-center text-[13px] text-ink-3">
-                Computer is off
-              </p>
-            ) : mode === "local" ? (
-              <p className="px-4 text-center text-[13px] text-ink-3">
-                Running on this PC
-              </p>
-            ) : shot ? (
-              <img
-                src={`data:image/png;base64,${shot}`}
-                alt="Live desktop"
-                className="h-full w-full object-contain object-top"
-              />
-            ) : (
-              <p className="px-4 text-center text-[13px] text-ink-3">
-                {booting ? "starting desktop…" : "live desktop"}
-              </p>
+            {screenInner}
+            {canOpen && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void openDesktop()}
+                className="absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 rounded-full bg-surface/95 px-3.5 py-1.5 text-[13px] font-medium text-ink shadow-raised backdrop-blur-sm hover:bg-surface disabled:opacity-50"
+              >
+                {busy ? "Opening…" : "Open"}
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  aria-hidden
+                >
+                  <path d="M7 17L17 7M7 7h10v10" />
+                </svg>
+              </button>
             )}
           </div>
 
@@ -296,21 +426,15 @@ export default function ComputerPanel({
             <span className="text-[13px] font-medium text-ink">{statusLabel}</span>
           </div>
 
-          {mode === "sandbox" && computerReady && (
-            <div className="flex flex-col gap-1.5">
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void openDesktop()}
-                className="w-full rounded-control bg-ink px-3 py-2 text-[13px] font-medium text-surface disabled:opacity-50"
-              >
-                {busy ? "Opening…" : "Take control"}
-              </button>
-              <p className="text-[11.5px] leading-snug text-ink-3">
-                Preview above is watch-only. Take control opens a full window
-                where you can use mouse and keyboard.
-              </p>
-            </div>
+          {controlUrl && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setControlUrl(null)}
+              className="w-full rounded-control border border-line bg-field px-3 py-2 text-[13px] font-medium text-ink hover:bg-hover disabled:opacity-50"
+            >
+              Exit control
+            </button>
           )}
 
           {working && taskPath && mode !== "off" && (

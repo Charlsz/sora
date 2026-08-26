@@ -1,7 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const WORDS_PER_FRAME = 5;
 
+/**
+ * Renders assistant text. Growing streams (SSE deltas) must not restart the
+ * word animation — that caused the “writing” flicker/reset bug.
+ */
 export default function StreamingText({
   text,
   fill = true,
@@ -13,12 +17,24 @@ export default function StreamingText({
 }) {
   const words = text.trim() ? text.split(/(\s+)/) : [];
   const [count, setCount] = useState(animate ? 0 : words.length);
+  const prevTextRef = useRef("");
 
   useEffect(() => {
     if (!animate) {
       setCount(words.length);
+      prevTextRef.current = text;
       return;
     }
+
+    const prev = prevTextRef.current;
+    // Stream growth: keep showing everything already typed, no reset.
+    if (prev && text.startsWith(prev)) {
+      setCount(words.length);
+      prevTextRef.current = text;
+      return;
+    }
+
+    prevTextRef.current = text;
     let cancelled = false;
     let shown = 0;
     setCount(0);
@@ -38,7 +54,7 @@ export default function StreamingText({
   const done = count >= words.length;
 
   return (
-    <div className={fill ? "w-full motion-gpu" : "w-full max-w-95 motion-gpu"}>
+    <div className={fill ? "w-full motion-gpu" : "motion-gpu"}>
       <p className="text-[14px] leading-relaxed text-ink whitespace-pre-wrap">
         {words.slice(0, count).join("")}
         {!done && (

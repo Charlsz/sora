@@ -1051,7 +1051,7 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
               streamUrl: result.ok ? result.message : undefined,
               error: result.ok ? undefined : result.message,
               message: result.ok
-                ? "Open the stream URL to type and click on the desktop."
+                ? "Desktop stream is ready — open it inside Sora’s Computer panel."
                 : result.message,
             },
             cors,

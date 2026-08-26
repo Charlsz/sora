@@ -4,6 +4,7 @@ export {
   PlaceholderBrowser,
   type LocalBrowserOptions,
 } from "./browser.ts";
+export { DesktopBrowser, type DesktopGui } from "./desktop-browser.ts";
 export {
   getBrowserInstallStatus,
   installPlaywrightChromium,

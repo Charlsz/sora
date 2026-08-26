@@ -48,6 +48,8 @@ export class AgentStore {
         "terminal",
         "http_request",
         "browser_navigate",
+        "schedule_routine",
+        "list_routines",
         "browser_click",
         "browser_type",
         "browser_screenshot",

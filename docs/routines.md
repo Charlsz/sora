@@ -20,7 +20,10 @@ Optional header: `x-sora-webhook-secret`.
 
 ## Always-on
 
-Cron and webhooks only fire while `sora start` / the desktop sidecar is running. See [always-on.md](./always-on.md).
+Cron and webhooks only fire while `sora start` / the desktop sidecar is running.
+**If Sora is closed, scheduled tasks do not run** — there is no cloud scheduler.
+Missed cron ticks are not backfilled; the next fire is after you reopen the app.
+See [always-on.md](./always-on.md).
 
 ## Limits (honest)
 

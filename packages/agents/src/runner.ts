@@ -438,11 +438,12 @@ export class AgentRunner {
       `Computer files root: ${workspace}`,
       `Capabilities: ${agent.capabilities.join(", ") || "general"}`,
       [
-        "You can use the internet and your computer.",
-        "http_request: fetch URLs and APIs.",
-        "browser_*: control a real browser on your computer (navigate, click, type, screenshot).",
-        "terminal / filesystem tools: work inside your computer files.",
+        "You have a real computer (cloud sandbox when configured) with internet.",
+        "http_request: fetch URLs/APIs from the Sora host network.",
+        "browser_*: opens and drives the browser on your cloud desktop VM (same screen the user watches / Opens) — the VM has outbound internet.",
+        "terminal: runs inside that same VM (curl, scripts, installs).",
         "Do not claim you lack internet or a browser when these tools are available.",
+        "Prefer browser_navigate + screenshots for interactive sites; http_request for raw HTML/APIs.",
       ].join(" "),
       peers.length
         ? [
@@ -452,6 +453,16 @@ export class AgentRunner {
           ].join("\n")
         : "You are currently the only teammate. The user can add more from the sidebar.",
     ];
+    if (/being set up|setup prompt/i.test(agent.instructions)) {
+      parts.push(
+        [
+          "You are mid-setup. Stay in this chat.",
+          "Do not call delegate_task.",
+          "Ask the prompt’s questions, guide Composio connections, then a supervised analysis-only first run.",
+          "After the user is happy with a run, you may schedule_routine (remind them schedules only fire while Sora is open).",
+        ].join(" "),
+      );
+    }
     if (this.tools.list().some((t) => t.name.startsWith("composio_"))) {
       parts.push(
         [
@@ -463,12 +474,12 @@ export class AgentRunner {
         ].join(" "),
       );
     }
-    if (/being set up|setup prompt/i.test(agent.instructions)) {
+    if (this.tools.list().some((t) => t.name === "schedule_routine")) {
       parts.push(
         [
-          "You are mid-setup. Stay in this chat.",
-          "Do not call delegate_task.",
-          "Ask the prompt’s questions, guide Composio connections, then a supervised analysis-only first run.",
+          "Routines: use schedule_routine after the user approves a first supervised run,",
+          "and list_routines to see existing ones.",
+          "Tell the user clearly: cron schedules only run while Sora is open on this computer — they do not run in the cloud when the app is closed.",
         ].join(" "),
       );
     }
@@ -501,7 +512,9 @@ export class AgentRunner {
       name.startsWith("browser_") ||
       name === "http_request" ||
       name === "agent_message" ||
-      name === "delegate_task"
+      name === "delegate_task" ||
+      name === "schedule_routine" ||
+      name === "list_routines"
     );
   }
 

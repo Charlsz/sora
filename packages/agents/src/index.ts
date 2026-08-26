@@ -31,6 +31,7 @@ import {
 import { AgentInboxStore } from "./inbox.ts";
 import { DelegationService } from "./delegation.ts";
 import { AgentRunner } from "./runner.ts";
+import { createScheduleTools } from "./schedule-tools.ts";
 import { AgentStore } from "./store.ts";
 import type { CreateAgentInput } from "./types.ts";
 
@@ -121,6 +122,9 @@ export function createSoraServices(
   runner.setSkills(skills);
 
   const workflows = new WorkflowStore(runtime.db);
+  for (const tool of createScheduleTools(workflows)) {
+    tools.register(tool);
+  }
   const workflowEngine = new WorkflowEngine({
     store: workflows,
     events: runtime.events,

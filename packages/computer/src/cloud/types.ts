@@ -45,6 +45,11 @@ export interface SandboxSession {
   getStreamUrl?(): Promise<{ url: string } | null>;
   /** Full-desktop PNG bytes for Watch. */
   screenshotDesktop?(): Promise<Uint8Array | null>;
+  /** Open a URL/file in the desktop default app (browser for http). */
+  desktopOpen?(target: string): Promise<void>;
+  desktopWrite?(text: string): Promise<void>;
+  desktopPress?(key: string | string[]): Promise<void>;
+  desktopLeftClick?(x?: number, y?: number): Promise<void>;
 }
 
 export interface SandboxProvider {

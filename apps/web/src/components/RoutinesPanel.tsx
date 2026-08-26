@@ -168,7 +168,9 @@ export default function RoutinesPanel({
       <div>
         <h2 className="text-[15px] font-semibold text-ink">Schedules</h2>
         <p className="mt-0.5 text-[12.5px] text-ink-3">
-          Recurring jobs and webhooks. Keep Sora running for them to fire.
+          Local-only: cron fires only while Sora is open on this computer. If the
+          app is closed, scheduled runs wait until you open it again — nothing
+          runs in the cloud.
         </p>
       </div>
 

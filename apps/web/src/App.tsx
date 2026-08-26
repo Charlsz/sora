@@ -11,13 +11,15 @@ import {
 import ApprovalCard from "./components/ApprovalCard";
 import AgentsPanel from "./components/AgentsPanel";
 import ComputerPanel from "./components/ComputerPanel";
+import ChatRoutines from "./components/ChatRoutines";
 import Onboarding from "./components/Onboarding";
 import PluginsPanel from "./components/PluginsPanel";
 import PromptBar from "./components/PromptBar";
 import ProviderSettings from "./components/ProviderSettings";
 import RoutinesPanel from "./components/RoutinesPanel";
-import SidebarNav from "./components/SidebarNav";
+import SidebarNav, { teammateColor } from "./components/SidebarNav";
 import StreamingText from "./components/StreamingText";
+import MarkdownMessage from "./components/MarkdownMessage";
 import type { ToolRow } from "./components/ToolChips";
 
 type WorkerStatus = "idle" | "working" | "needs_you" | "done" | "failed";
@@ -77,6 +79,7 @@ export function App() {
   const [onboardingDone, setOnboardingDone] = useState(false);
   const [saveRoutineBusy, setSaveRoutineBusy] = useState(false);
   const [computerOpen, setComputerOpen] = useState(true);
+  const [vmControlUrl, setVmControlUrl] = useState<string | null>(null);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [connectApps, setConnectApps] = useState<
     Array<{ key: string; name: string; desc: string }>
@@ -606,142 +609,152 @@ export function App() {
         }}
       />
 
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="flex shrink-0 flex-col gap-2 border-b border-line px-5 py-3">
-          <div className="flex items-center justify-between gap-3">
+      <main
+        className={`flex min-h-0 flex-col ${
+          vmControlUrl && showChatChrome
+            ? "w-[380px] shrink-0 border-r border-line"
+            : "min-w-0 flex-1"
+        }`}
+      >
+        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-line px-5 py-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            {showChatChrome && active && (
+              <span
+                className="flex size-7 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold text-surface"
+                style={{ background: teammateColor(active.slug) }}
+                aria-hidden
+              >
+                {active.name.slice(0, 1).toUpperCase()}
+              </span>
+            )}
             <div className="min-w-0">
-              <div className="flex items-baseline gap-3">
-                <h1 className="truncate text-[16px] font-semibold text-ink">
-                  {nav === "routines"
-                    ? "Schedules"
-                    : nav === "agents"
-                      ? "New teammate"
-                      : nav === "plugins"
-                        ? "Connected apps"
-                        : nav === "settings"
-                          ? "Connections"
-                          : (active?.name ?? "Pick a teammate")}
-                </h1>
-                {showChatChrome && active && (
-                  <span className="shrink-0 text-[12.5px] font-medium text-ink-3">
-                    {modelLabel}
-                  </span>
-                )}
-              </div>
+              <h1 className="truncate text-[15px] font-semibold text-ink">
+                {nav === "routines"
+                  ? "Schedules"
+                  : nav === "agents"
+                    ? "New teammate"
+                    : nav === "plugins"
+                      ? "Connected apps"
+                      : nav === "settings"
+                        ? "Connections"
+                        : (active?.name ?? "Pick a teammate")}
+              </h1>
               {showChatChrome && active && (
-                <p className="mt-1 flex items-center gap-1.5 text-[12.5px] text-ink-2">
+                <p className="mt-0.5 flex items-center gap-1.5 text-[12px] text-ink-3">
                   <span
                     className={`size-1.5 shrink-0 rounded-full ${statusDot}`}
                   />
                   {statusLabel}
+                  <span className="text-ink-3">·</span>
+                  {modelLabel}
                 </p>
               )}
             </div>
-            <div className="flex items-center gap-1.5">
-              {showChatChrome && active && (
-                <>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {showChatChrome && active && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setComputerOpen((o) => !o)}
+                  className={`rounded-control px-2.5 py-1.5 text-[12px] font-medium ${
+                    computerOpen
+                      ? "bg-field text-ink"
+                      : "bg-field text-ink-2 hover:bg-hover"
+                  }`}
+                  title="Computer & routines"
+                >
+                  {computerOpen ? "Hide panel" : "Show panel"}
+                </button>
+                <div className="relative" ref={headerMenuRef}>
                   <button
                     type="button"
-                    onClick={() => setComputerOpen((o) => !o)}
-                    className={`rounded-control px-2.5 py-1.5 text-[12px] font-medium ${
-                      computerOpen
-                        ? "bg-green-tint text-green"
-                        : "bg-field text-ink-2 hover:bg-hover"
-                    }`}
-                    title="Computer"
+                    aria-label="More actions"
+                    onClick={() => setHeaderMenuOpen((o) => !o)}
+                    className="flex size-8 items-center justify-center rounded-control bg-field text-ink-2 hover:bg-hover"
                   >
-                    Computer
+                    ···
                   </button>
-                  <div className="relative" ref={headerMenuRef}>
-                    <button
-                      type="button"
-                      aria-label="More actions"
-                      onClick={() => setHeaderMenuOpen((o) => !o)}
-                      className="flex size-8 items-center justify-center rounded-control bg-field text-ink-2 hover:bg-hover"
-                    >
-                      ···
-                    </button>
-                    {headerMenuOpen && (
-                      <div className="absolute top-full right-0 z-40 mt-1 w-52 rounded-[12px] bg-surface p-1 shadow-overlay">
+                  {headerMenuOpen && (
+                    <div className="absolute top-full right-0 z-40 mt-1 w-52 rounded-[12px] bg-surface p-1 shadow-overlay">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLive([]);
+                          setChatTitle(null);
+                          setConversationId(null);
+                          setError(null);
+                          setHeaderMenuOpen(false);
+                        }}
+                        className="flex h-9 w-full items-center rounded-[8px] px-2.5 text-left text-[13px] text-ink-2 hover:bg-hover"
+                      >
+                        New task
+                      </button>
+                      <button
+                        type="button"
+                        disabled={
+                          !conversationId ||
+                          saveRoutineBusy ||
+                          !toolRows.some((t) => t.status === "completed")
+                        }
+                        onClick={() => void saveChatAsRoutine()}
+                        className="flex h-9 w-full items-center rounded-[8px] px-2.5 text-left text-[13px] text-ink-2 hover:bg-hover disabled:opacity-40"
+                      >
+                        Save as schedule
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setHeaderMenuOpen(false);
+                          setNav("agents");
+                        }}
+                        className="flex h-9 w-full items-center rounded-[8px] px-2.5 text-left text-[13px] text-ink-2 hover:bg-hover"
+                      >
+                        Manage teammate
+                      </button>
+                      {(active
+                        ? [
+                            {
+                              key: active.model,
+                              name: shortModelName(active.model),
+                            },
+                            {
+                              key: defaultModel,
+                              name: shortModelName(defaultModel),
+                            },
+                          ].filter(
+                            (m, i, arr) =>
+                              m.key &&
+                              arr.findIndex((x) => x.key === m.key) === i,
+                          )
+                        : []
+                      ).map((m) => (
                         <button
+                          key={m.key}
                           type="button"
                           onClick={() => {
-                            setLive([]);
-                            setChatTitle(null);
-                            setConversationId(null);
-                            setError(null);
                             setHeaderMenuOpen(false);
+                            void soraApi
+                              .updateAgent(active.slug, { model: m.key })
+                              .then(() => refresh())
+                              .catch((err) =>
+                                setError(
+                                  err instanceof Error
+                                    ? err.message
+                                    : String(err),
+                                ),
+                              );
                           }}
                           className="flex h-9 w-full items-center rounded-[8px] px-2.5 text-left text-[13px] text-ink-2 hover:bg-hover"
                         >
-                          New task
+                          Model · {m.name}
                         </button>
-                        <button
-                          type="button"
-                          disabled={
-                            !conversationId ||
-                            saveRoutineBusy ||
-                            !toolRows.some((t) => t.status === "completed")
-                          }
-                          onClick={() => void saveChatAsRoutine()}
-                          className="flex h-9 w-full items-center rounded-[8px] px-2.5 text-left text-[13px] text-ink-2 hover:bg-hover disabled:opacity-40"
-                        >
-                          Save as schedule
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setHeaderMenuOpen(false);
-                            setNav("agents");
-                          }}
-                          className="flex h-9 w-full items-center rounded-[8px] px-2.5 text-left text-[13px] text-ink-2 hover:bg-hover"
-                        >
-                          Manage teammate
-                        </button>
-                        {(active
-                          ? [
-                              {
-                                key: active.model,
-                                name: shortModelName(active.model),
-                              },
-                              {
-                                key: defaultModel,
-                                name: shortModelName(defaultModel),
-                              },
-                            ].filter(
-                              (m, i, arr) =>
-                                m.key &&
-                                arr.findIndex((x) => x.key === m.key) === i,
-                            )
-                          : []
-                        ).map((m) => (
-                          <button
-                            key={m.key}
-                            type="button"
-                            onClick={() => {
-                              setHeaderMenuOpen(false);
-                              void soraApi
-                                .updateAgent(active.slug, { model: m.key })
-                                .then(() => refresh())
-                                .catch((err) =>
-                                  setError(
-                                    err instanceof Error
-                                      ? err.message
-                                      : String(err),
-                                  ),
-                                );
-                            }}
-                            className="flex h-9 w-full items-center rounded-[8px] px-2.5 text-left text-[13px] text-ink-2 hover:bg-hover"
-                          >
-                            Model · {m.name}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </header>
 
@@ -782,7 +795,7 @@ export function App() {
               }
             />
           ) : (
-            <div className="mx-auto flex w-full max-w-xl flex-col gap-5">
+            <div className="mx-auto flex w-full max-w-2xl flex-col gap-3">
               {live.length === 0 && !busy && (
                 <div className="py-16">
                   <p className="text-[17px] font-semibold text-ink">
@@ -808,23 +821,27 @@ export function App() {
               {live.map((entry) => {
                 if (entry.kind === "user") {
                   return (
-                    <div key={entry.id} className="flex flex-col gap-1">
-                      <span className="text-[12px] font-semibold text-ink">
-                        You
-                      </span>
-                      <p className="text-[14px] leading-relaxed text-ink-2">
+                    <div key={entry.id} className="flex justify-end">
+                      <div className="max-w-[85%] rounded-[18px] bg-field px-3.5 py-2.5 text-[14px] leading-relaxed text-ink">
                         {entry.content}
-                      </p>
+                      </div>
                     </div>
                   );
                 }
                 if (entry.kind === "assistant") {
                   return (
-                    <div key={entry.id} className="flex flex-col gap-1.5">
-                      <span className="text-[12px] font-semibold text-ink">
-                        {active?.name ?? "Teammate"}
-                      </span>
-                      <StreamingText text={entry.content} />
+                    <div key={entry.id} className="flex justify-start">
+                      <div className="max-w-[92%] rounded-[18px] bg-inset px-3.5 py-2.5">
+                        {entry.streaming ? (
+                          <StreamingText
+                            text={entry.content}
+                            animate={false}
+                            fill={false}
+                          />
+                        ) : (
+                          <MarkdownMessage text={entry.content} />
+                        )}
+                      </div>
                     </div>
                   );
                 }
@@ -882,7 +899,8 @@ export function App() {
         {showChatChrome && (
           <div className="shrink-0 border-t border-line bg-panel/80 px-5 py-3 backdrop-blur">
             <PromptBar
-              disabled={busy || !active}
+              disabled={!active}
+              sending={busy}
               placeholder={
                 active ? `Message ${active.name}` : "Pick a teammate first"
               }
@@ -930,14 +948,38 @@ export function App() {
       </main>
 
       {computerOpen && showChatChrome && (
-        <aside className="flex w-[300px] shrink-0 flex-col border-l border-line bg-panel">
-          <div className="scroll-pane min-h-0 flex-1 p-4">
-            <ComputerPanel
-              agentSlug={selected}
-              agentName={active?.name}
-              working={workerStatus === "working"}
-              onClose={() => setComputerOpen(false)}
-            />
+        <aside
+          className={`flex shrink-0 flex-col border-l border-line bg-panel ${
+            vmControlUrl
+              ? "min-w-0 flex-1 border-l-0"
+              : "w-[300px]"
+          }`}
+        >
+          <div
+            className={`flex min-h-0 flex-1 flex-col ${
+              vmControlUrl ? "gap-0 p-3" : "gap-5 p-4"
+            }`}
+          >
+            <div className={vmControlUrl ? "flex min-h-0 flex-1 flex-col" : ""}>
+              <ComputerPanel
+                compact
+                fillWindow={Boolean(vmControlUrl)}
+                agentSlug={selected}
+                agentName={active?.name}
+                working={workerStatus === "working"}
+                onControlChange={setVmControlUrl}
+              />
+            </div>
+            {!vmControlUrl && (
+              <div className="min-h-0 flex-1 border-t border-line pt-4">
+                <ChatRoutines
+                  workflows={workflows}
+                  agentSlug={selected}
+                  onAdd={() => setNav("routines")}
+                  onOpenAll={() => setNav("routines")}
+                />
+              </div>
+            )}
           </div>
         </aside>
       )}

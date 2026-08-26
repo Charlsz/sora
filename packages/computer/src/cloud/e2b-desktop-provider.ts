@@ -36,6 +36,10 @@ type DesktopHandle = {
   screenshot: (format?: "bytes") => Promise<Uint8Array>;
   setTimeout: (ms: number) => Promise<unknown> | unknown;
   kill: () => Promise<unknown>;
+  open: (fileOrUrl: string) => Promise<void>;
+  write: (text: string, options?: { chunkSize?: number; delayInMs?: number }) => Promise<void>;
+  press: (key: string | string[]) => Promise<void>;
+  leftClick: (x?: number, y?: number) => Promise<void>;
 };
 
 /**
@@ -179,6 +183,22 @@ export class E2bDesktopSession implements SandboxSession {
 
   async screenshotDesktop(): Promise<Uint8Array> {
     return this.#handle.screenshot("bytes");
+  }
+
+  async desktopOpen(target: string): Promise<void> {
+    await this.#handle.open(target);
+  }
+
+  async desktopWrite(text: string): Promise<void> {
+    await this.#handle.write(text);
+  }
+
+  async desktopPress(key: string | string[]): Promise<void> {
+    await this.#handle.press(key);
+  }
+
+  async desktopLeftClick(x?: number, y?: number): Promise<void> {
+    await this.#handle.leftClick(x, y);
   }
 
   async getStreamUrl(): Promise<{ url: string } | null> {

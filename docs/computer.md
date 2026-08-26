@@ -42,7 +42,7 @@ Config (`~/.sora/config.json`):
 | Action | How |
 |--------|-----|
 | **Watch** | Polls `GET /api/agents/:slug/computer/display` for desktop screenshots |
-| **Open desktop** | Live stream URL via `POST …/computer/takeover` — sign in, 2FA, click through UIs |
+| **Take control** | Live stream via `POST …/computer/takeover` — embedded in the Computer panel (not the system browser) so you can sign in, 2FA, and click through UIs inside Sora |
 
 ## Other providers (advanced)
 

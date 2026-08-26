@@ -3,11 +3,13 @@ import {
   type SoraConfig,
 } from "@sora/core";
 import { LocalComputer, type LocalComputerOptions } from "../local.ts";
+import { DesktopBrowser } from "../desktop-browser.ts";
 import {
   collectSecretValues,
   scrubSecretsFromText,
 } from "../security/env.ts";
 import type {
+  Browser,
   Computer,
   ComputerCapabilities,
   ComputerDisplay,
@@ -43,6 +45,7 @@ export class SandboxComputer implements Computer {
   readonly #preferDisplay: boolean;
   #session: SandboxSession | null = null;
   #sessionPromise: Promise<SandboxSession> | null = null;
+  #desktopBrowser: DesktopBrowser | null = null;
   readonly kind = "cloud" as const;
   readonly provider: ComputerProviderId;
   readonly capabilities: ComputerCapabilities;
@@ -81,7 +84,55 @@ export class SandboxComputer implements Computer {
     return this.#local.filesystem;
   }
 
-  get browser() {
+  get browser(): Browser {
+    if (this.#sessionBackend.capabilities.desktop) {
+      if (!this.#desktopBrowser) {
+        this.#desktopBrowser = new DesktopBrowser({
+          open: async (target) => {
+            const session = await this.#ensureSession();
+            if (!session.desktopOpen) {
+              throw new Error("Desktop open is unavailable on this sandbox");
+            }
+            await session.desktopOpen(target);
+          },
+          write: async (text) => {
+            const session = await this.#ensureSession();
+            await session.desktopWrite?.(text);
+          },
+          press: async (key) => {
+            const session = await this.#ensureSession();
+            await session.desktopPress?.(key);
+          },
+          leftClick: async (x, y) => {
+            const session = await this.#ensureSession();
+            await session.desktopLeftClick?.(x, y);
+          },
+          screenshot: async () => {
+            const session = await this.#ensureSession();
+            const bytes = await session.screenshotDesktop?.();
+            if (!bytes?.length) throw new Error("Desktop screenshot failed");
+            return bytes;
+          },
+          keepAlive: async () => {
+            const session = await this.#ensureSession();
+            await session.keepAlive();
+          },
+          fetchText: async (url) => {
+            const session = await this.#ensureSession();
+            const quoted = `'${url.replace(/'/g, `'\\''`)}'`;
+            const result = await session.exec(
+              `curl -fsSL --max-time 45 ${quoted} | head -c 80000`,
+              { timeoutMs: 60_000 },
+            );
+            if (result.exitCode !== 0) {
+              throw new Error(result.stderr || `curl exit ${result.exitCode}`);
+            }
+            return result.stdout;
+          },
+        });
+      }
+      return this.#desktopBrowser;
+    }
     return this.#local.browser;
   }
 
