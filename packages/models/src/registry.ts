@@ -26,6 +26,7 @@ export type ProviderStatus = {
   allowCustomBaseUrl: boolean;
   docsUrl: string | null;
   hint: string | null;
+  kind: "llm" | "infra";
 };
 
 export type ModelCatalogResponse = {
@@ -54,6 +55,7 @@ function createOpenAIProviders(): Map<string, OpenAICompatibleProvider> {
   const map = new Map<string, OpenAICompatibleProvider>();
   for (const meta of PROVIDER_CATALOG) {
     if (meta.id === "mock") continue;
+    if (meta.kind === "infra") continue;
     map.set(
       meta.id,
       new OpenAICompatibleProvider({
@@ -108,7 +110,7 @@ export class ProviderRegistry {
 
   applySecrets(secrets: ProviderSecretsInput): void {
     for (const meta of PROVIDER_CATALOG) {
-      if (meta.id === "mock") continue;
+      if (meta.id === "mock" || meta.kind === "infra") continue;
       const provider = this.#openai.get(meta.id);
       if (!provider) continue;
 
@@ -140,6 +142,34 @@ export class ProviderRegistry {
           allowCustomBaseUrl: false,
           docsUrl: meta.docsUrl ?? null,
           hint: null,
+          kind: "llm" as const,
+        };
+      }
+
+      if (meta.kind === "infra") {
+        const stored = secrets.providers[meta.id];
+        const envVal = resolveEnvKey(meta);
+        const fromEnv = Boolean(envVal && !stored?.apiKey);
+        const hasKey = Boolean(stored?.apiKey || envVal);
+        let hint: string | null = null;
+        if (stored?.apiKey) {
+          const k = stored.apiKey;
+          hint = k.length <= 8 ? "••••" : `${k.slice(0, 3)}…${k.slice(-4)}`;
+        } else if (fromEnv) {
+          hint = "from env";
+        }
+        return {
+          id: meta.id,
+          name: meta.name,
+          description: meta.description,
+          configured: hasKey,
+          fromEnv,
+          needsKey: meta.needsKey,
+          baseUrl: meta.defaultBaseUrl,
+          allowCustomBaseUrl: false,
+          docsUrl: meta.docsUrl ?? null,
+          hint,
+          kind: "infra" as const,
         };
       }
 
@@ -170,6 +200,7 @@ export class ProviderRegistry {
         allowCustomBaseUrl: meta.allowCustomBaseUrl ?? false,
         docsUrl: meta.docsUrl ?? null,
         hint,
+        kind: "llm" as const,
       };
     });
   }

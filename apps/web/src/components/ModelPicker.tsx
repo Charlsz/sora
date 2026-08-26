@@ -24,7 +24,10 @@ export default function ModelPicker({
   }, [value]);
 
   const configuredProviders = useMemo(
-    () => providers.filter((p) => p.configured),
+    () =>
+      providers.filter(
+        (p) => p.configured && (p.kind ?? "llm") !== "infra",
+      ),
     [providers],
   );
 

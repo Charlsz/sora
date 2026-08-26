@@ -16,22 +16,27 @@ export default function ComputerPanel({
   const [installing, setInstalling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [browserEnabled, setBrowserEnabled] = useState(true);
+  const [sandboxEnabled, setSandboxEnabled] = useState(false);
+  const [sandboxProvider, setSandboxProvider] = useState("e2b");
+  const [sandboxMsg, setSandboxMsg] = useState<string | null>(null);
 
   async function refresh() {
     const [status] = await Promise.all([
       soraApi.browserStatus().catch(() => null),
     ]);
     setBrowserStatus(status);
+    const config = await soraApi.getConfig().catch(() => null);
+    if (config) {
+      setBrowserEnabled(config.browser !== "off");
+      setSandboxEnabled(Boolean(config.sandbox?.enabled));
+      setSandboxProvider(config.sandbox?.provider ?? "e2b");
+    }
     if (!agentSlug) {
       setInfo(null);
       return;
     }
-    const [data, config] = await Promise.all([
-      soraApi.computer(agentSlug),
-      soraApi.getConfig().catch(() => ({ browser: "on" as const })),
-    ]);
+    const data = await soraApi.computer(agentSlug);
     setInfo(data);
-    setBrowserEnabled(config.browser !== "off");
   }
 
   useEffect(() => {
@@ -90,6 +95,34 @@ export default function ComputerPanel({
     }
   }
 
+  async function toggleSandbox() {
+    setBusy(true);
+    setError(null);
+    setSandboxMsg(null);
+    try {
+      const next = !sandboxEnabled;
+      await soraApi.setConfig({
+        sandbox: {
+          enabled: next,
+          provider: next ? "e2b" : "local",
+          failClosed: true,
+          idleMs: 600_000,
+        },
+      });
+      setSandboxEnabled(next);
+      setSandboxProvider(next ? "e2b" : "local");
+      setSandboxMsg(
+        next
+          ? "Cloud sandbox on — terminal runs in an E2B microVM. Add E2B key under Models. Host shell fallback is off."
+          : "Sandbox off — terminal runs locally with a scrubbed env (no API keys).",
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function toggleBrowser() {
     setBusy(true);
     setError(null);
@@ -115,6 +148,36 @@ export default function ComputerPanel({
         <p className="mt-0.5 text-[12px] text-ink-3">
           Local Chromium per agent — free, no cloud VM required.
         </p>
+      </div>
+
+      <div className="rounded-card bg-surface p-3 shadow-card">
+        <div className="flex items-center justify-between gap-2 text-[12px]">
+          <span className="text-ink-2">Cloud sandbox</span>
+          <span
+            className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+              sandboxEnabled
+                ? "bg-green-tint text-green"
+                : "bg-field text-ink-3"
+            }`}
+          >
+            {sandboxEnabled ? sandboxProvider : "local"}
+          </span>
+        </div>
+        <p className="mt-2 text-[11px] text-ink-3">
+          Opt-in E2B microVM for shell + files. Smaller/cheaper than a full cloud
+          desktop. Model API keys never enter the VM. See docs/sandbox-security.md.
+        </p>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void toggleSandbox()}
+          className="mt-2 rounded-control bg-field px-2.5 py-1 text-[12px] text-ink-2 hover:bg-hover disabled:opacity-50"
+        >
+          {sandboxEnabled ? "Disable sandbox" : "Enable E2B sandbox"}
+        </button>
+        {sandboxMsg && (
+          <p className="mt-2 text-[11px] text-ink-3">{sandboxMsg}</p>
+        )}
       </div>
 
       <div className="rounded-card bg-surface p-3 shadow-card">

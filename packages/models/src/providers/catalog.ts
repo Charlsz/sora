@@ -15,6 +15,8 @@ export type ProviderCatalogEntry = {
   /** Show base URL field in Settings (Azure, custom proxies). */
   allowCustomBaseUrl?: boolean;
   docsUrl?: string;
+  /** llm (default) vs infra keys (sandbox providers — not chat models). */
+  kind?: "llm" | "infra";
 };
 
 export const PROVIDER_CATALOG: ProviderCatalogEntry[] = [
@@ -72,6 +74,17 @@ export const PROVIDER_CATALOG: ProviderCatalogEntry[] = [
     defaultBaseUrl: "https://api.x.ai/v1",
     envKey: "XAI_API_KEY",
     docsUrl: "https://docs.x.ai",
+  },
+  {
+    id: "e2b",
+    name: "E2B (sandbox)",
+    description:
+      "Cloud microVM for isolated shell + files — API key stays on your machine, never inside the VM",
+    needsKey: true,
+    defaultBaseUrl: "https://api.e2b.dev",
+    envKey: "E2B_API_KEY",
+    docsUrl: "https://e2b.dev/docs",
+    kind: "infra",
   },
   {
     id: "groq",

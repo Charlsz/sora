@@ -59,6 +59,7 @@ export type ProviderInfo = {
   allowCustomBaseUrl: boolean;
   docsUrl: string | null;
   hint: string | null;
+  kind?: "llm" | "infra";
 };
 
 export type ModelOption = {
@@ -358,11 +359,40 @@ export const soraApi = {
       },
     ),
   getConfig: () =>
-    api<{ defaultModel: string; browser: "on" | "off"; home: string }>(
-      "/api/config",
-    ),
-  setConfig: (body: { defaultModel?: string; browser?: "on" | "off" }) =>
-    api<{ defaultModel: string; browser: "on" | "off" }>("/api/config", {
+    api<{
+      defaultModel: string;
+      browser: "on" | "off";
+      sandbox: {
+        enabled: boolean;
+        provider: string;
+        failClosed?: boolean;
+        idleMs?: number;
+        commandTimeoutMs?: number;
+      };
+      home: string;
+    }>("/api/config"),
+  setConfig: (body: {
+    defaultModel?: string;
+    browser?: "on" | "off";
+    sandbox?: {
+      enabled?: boolean;
+      provider?: string;
+      failClosed?: boolean;
+      idleMs?: number;
+      commandTimeoutMs?: number;
+    };
+  }) =>
+    api<{
+      defaultModel: string;
+      browser: "on" | "off";
+      sandbox: {
+        enabled: boolean;
+        provider: string;
+        failClosed?: boolean;
+        idleMs?: number;
+        commandTimeoutMs?: number;
+      };
+    }>("/api/config", {
       method: "PUT",
       body: JSON.stringify(body),
     }),

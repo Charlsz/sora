@@ -855,12 +855,24 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
           const body = (await req.json()) as {
             defaultModel?: string;
             browser?: "on" | "off";
-            sandbox?: { enabled?: boolean; provider?: "local" | "e2b" | "daytona" };
+            sandbox?: {
+              enabled?: boolean;
+              provider?: "local" | "e2b" | "daytona" | "fake";
+              failClosed?: boolean;
+              idleMs?: number;
+              commandTimeoutMs?: number;
+            };
           };
           const patch: {
             defaultModel?: string;
             browser?: "on" | "off";
-            sandbox?: { enabled: boolean; provider: "local" | "e2b" | "daytona" };
+            sandbox?: {
+              enabled: boolean;
+              provider: "local" | "e2b" | "daytona" | "fake";
+              failClosed?: boolean;
+              idleMs?: number;
+              commandTimeoutMs?: number;
+            };
           } = {};
 
           if (body.defaultModel?.trim()) {
@@ -888,10 +900,19 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
             const prev = services.runtime.config.sandbox ?? {
               enabled: false,
               provider: "local" as const,
+              failClosed: true,
+              idleMs: 600_000,
+              commandTimeoutMs: 120_000,
             };
             patch.sandbox = {
               enabled: body.sandbox.enabled ?? prev.enabled,
               provider: body.sandbox.provider ?? prev.provider,
+              failClosed: body.sandbox.failClosed ?? prev.failClosed ?? true,
+              idleMs: body.sandbox.idleMs ?? prev.idleMs ?? 600_000,
+              commandTimeoutMs:
+                body.sandbox.commandTimeoutMs ??
+                prev.commandTimeoutMs ??
+                120_000,
             };
           }
 
