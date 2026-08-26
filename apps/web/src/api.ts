@@ -135,7 +135,52 @@ export type McpServer = {
   hasHeaders?: boolean;
 };
 
-const API_BASE = "";
+function detectApiBase(): string {
+  const fromEnv = (import.meta as { env?: Record<string, string> }).env
+    ?.VITE_API_BASE;
+  if (fromEnv) return fromEnv.replace(/\/$/, "");
+
+  if (typeof window !== "undefined") {
+    const { protocol, hostname, port } = window.location;
+    const tauriHost =
+      hostname === "tauri.localhost" ||
+      hostname.endsWith(".tauri.localhost");
+    const isTauri =
+      protocol === "tauri:" ||
+      protocol === "asset:" ||
+      tauriHost ||
+      // Tauri 2 injects internals in the webview
+      Boolean(
+        (window as unknown as { __TAURI_INTERNALS__?: unknown })
+          .__TAURI_INTERNALS__,
+      );
+    if (isTauri) {
+      return "http://127.0.0.1:7420";
+    }
+    if (
+      protocol === "http:" &&
+      (hostname === "localhost" || hostname === "127.0.0.1") &&
+      port &&
+      port !== "7420"
+    ) {
+      // Vite/Tauri-dev UI on :5173 — relative URLs use the Vite proxy.
+      return "";
+    }
+  }
+  return "";
+}
+
+const API_BASE = detectApiBase();
+
+/** Absolute API origin for webhook URLs and desktop clients. */
+export function apiOrigin(): string {
+  if (API_BASE) return API_BASE;
+  if (typeof window !== "undefined" && window.location.origin.startsWith("http")) {
+    // Dev proxy: prefer the real runtime port, not the Vite origin.
+    return "http://127.0.0.1:7420";
+  }
+  return "http://127.0.0.1:7420";
+}
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -225,6 +270,16 @@ export const soraApi = {
     ),
   runWorkflow: (slug: string) =>
     api<unknown>(`/api/workflows/${slug}/run`, { method: "POST", body: "{}" }),
+  setWorkflowEnabled: (slug: string, enabled: boolean) =>
+    api<Workflow>(`/api/workflows/${encodeURIComponent(slug)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ enabled }),
+    }),
+  deleteWorkflow: (slug: string) =>
+    api<{ ok: boolean; slug: string }>(
+      `/api/workflows/${encodeURIComponent(slug)}`,
+      { method: "DELETE" },
+    ),
   tools: () =>
     api<Array<{ name: string; description: string }>>("/api/tools"),
   plugins: () => api<{ plugins: PluginStatus[] }>("/api/plugins"),
@@ -329,10 +384,18 @@ export const soraApi = {
     }),
   pendingPermissions: () =>
     api<PendingPermission[]>("/api/permissions/pending"),
-  respondPermission: (requestId: string, decision: "allow" | "deny") =>
+  respondPermission: (
+    requestId: string,
+    decision: "allow" | "deny",
+    options?: { rememberSession?: boolean },
+  ) =>
     api<{ ok: boolean }>("/api/permissions/respond", {
       method: "POST",
-      body: JSON.stringify({ requestId, decision }),
+      body: JSON.stringify({
+        requestId,
+        decision,
+        rememberSession: options?.rememberSession ?? false,
+      }),
     }),
   providers: () =>
     api<{

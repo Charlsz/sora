@@ -303,6 +303,23 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
           return json(run, cors);
         }
 
+        const wfMatch = /^\/api\/workflows\/([^/]+)$/.exec(url.pathname);
+        if (wfMatch && req.method === "PATCH") {
+          const slug = decodeURIComponent(wfMatch[1]!);
+          const body = (await req.json()) as { enabled?: boolean };
+          if (typeof body.enabled !== "boolean") {
+            return json({ error: "enabled boolean is required" }, cors, 400);
+          }
+          const wf = services.workflows.setEnabled(slug, body.enabled);
+          return json(wf, cors);
+        }
+
+        if (wfMatch && req.method === "DELETE") {
+          const slug = decodeURIComponent(wfMatch[1]!);
+          services.workflows.remove(slug);
+          return json({ ok: true, slug }, cors);
+        }
+
         const hookMatch = /^\/api\/hooks\/(.+)$/.exec(url.pathname);
         if (hookMatch && req.method === "POST") {
           const path = decodeURIComponent(hookMatch[1]!);
@@ -1053,6 +1070,7 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
           const body = (await req.json()) as {
             requestId?: string;
             decision?: string;
+            rememberSession?: boolean;
           };
           if (!body.requestId?.trim()) {
             return json({ error: "requestId is required" }, cors, 400);
@@ -1060,7 +1078,9 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
           if (body.decision !== "allow" && body.decision !== "deny") {
             return json({ error: "decision must be allow or deny" }, cors, 400);
           }
-          const ok = permissionAsk.respond(body.requestId, body.decision);
+          const ok = permissionAsk.respond(body.requestId, body.decision, {
+            rememberSession: Boolean(body.rememberSession),
+          });
           if (!ok) {
             return json({ error: "unknown or expired permission request" }, cors, 404);
           }
@@ -1155,7 +1175,7 @@ function corsHeaders(req: Request): Record<string, string> {
   const allow = origin ?? "http://127.0.0.1";
   return {
     "access-control-allow-origin": allow,
-    "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS",
+    "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
     "access-control-allow-headers": "content-type",
     "access-control-allow-credentials": "true",
     vary: "Origin",

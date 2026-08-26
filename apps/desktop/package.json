@@ -4,9 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "bunx tauri dev --runner cargo-xwin",
-    "dev": "bunx tauri dev --runner cargo-xwin",
-    "build": "bunx tauri build --runner cargo-xwin"
+    "start": "bunx tauri dev",
+    "dev": "bunx tauri dev",
+    "build": "bunx tauri build",
+    "dev:xwin": "bunx tauri dev --runner cargo-xwin",
+    "build:xwin": "bunx tauri build --runner cargo-xwin"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"
