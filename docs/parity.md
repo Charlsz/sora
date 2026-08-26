@@ -1,44 +1,48 @@
 # Parity vs Grok Bot
 
-Honest status of Sora as a **local-first Grok Bot–style coworker workspace**. Verified against the current codebase + tests (2026-08-25).
+Sora targets **feature parity with Grok Bot** as an **open-source, BYO-subscription** alternative — not a “local-first dev tool.”
 
-## Verdict
+## Positioning
 
-**Core coworker loop works locally today.** You can create agents, switch conversations, chat with streaming, watch the browser Computer, approve actions, run skills, delegate between agents, schedule cron/webhook routines with run history, and isolate the shell via E2B or Docker — with your own models and data under `~/.sora`.
-
-**Still not identical to Grok** for: vendor-hosted always-on Team Computer, live remote desktop takeover in a cloud VM, and zero-ops away mode without keeping *your* runtime up.
+| | Grok Bot | Sora |
+|--|----------|------|
+| Product | Paid AI teammates + cloud computer | **Same UX goal, OSS** |
+| Account | Sign in to SpaceXAI | **No Sora account (for now)** |
+| Models | Included in subscription | **BYO keys** (OpenRouter / OpenAI / xAI) |
+| Computer | Vendor-hosted cloud VM | **BYO E2B cloud sandbox VM** |
+| App | Desktop + iOS | **Desktop (Win/Mac)** |
 
 ## Feature matrix
 
-| Grok Bot user can… | Sora today | Remaining gap |
-|--------------------|------------|---------------|
-| Chat with specialized bots | **Working** | Polish |
-| Switch past conversations | **Working** | Rename/delete UI |
-| Give bots a real computer | **Working** — local / E2B / Docker | Full cloud GUI desktop |
-| Watch the computer work | **Working** — Watch button (browser frames) | Remote desktop stream |
-| Take over the desktop | **No** | Input channel on remote Computer |
+| Grok Bot user can… | Sora today | Gap |
+|--------------------|------------|-----|
+| Message specialized bots | **Working** | Polish |
+| Bots work in **cloud computer** | **Working** (E2B desktop VM) | Bundled VM (no separate E2B signup) |
+| Watch / take over desktop | **Working** | — |
+| Sign into tools on computer | **Working** (Open desktop + Composio) | More first-party connectors |
 | Approve risky actions | **Working** | — |
-| Schedule routines + see runs | **Working** | Event triggers (Slack/GitHub) |
-| Save a demo as a routine | **Partial** — tool-step replay | Screen recording (optional) |
-| Multi-agent handoffs | **Working** | — |
-| Skills / connectors | **Working** | More first-party connectors |
-| Bring your own model | **Working** | — |
-| Encrypt secrets at rest | **Working** when `SORA_ENCRYPTION_KEY` set | OS keychain default |
-| Work while laptop is closed | **Partial** — `bun run always-on` / VPS | Hosted relay |
+| Multiple bots in parallel | **Working** | Chief-of-staff UX polish |
+| Routines (overnight jobs) | **Working** (cron/webhooks) | Demo capture → routine |
+| Save workflow from demo | **Partial** (tool-step replay) | Screen recording |
+| 24/7 while laptop closed | **Partial** | Hosted control plane + always-on VM |
+| iOS messaging | **No** | Mobile app |
+| No vendor login | **No** (Grok requires account) | **Yes — Sora advantage** |
 
-## What shipped in this pass
+## Honest gaps
 
-1. Computer config (`computer.provider`) + docs scrub (Grok-only)  
-2. Live **Watch** on Computer panel + `GET …/computer/display`  
-3. Conversation switcher in chat header  
-4. Routine **run history** API + UI  
-5. **Docker** Computer provider (bind-mounted workspace)  
-6. **AES-GCM** secrets when `SORA_ENCRYPTION_KEY` is set  
-7. Always-on install helper (`bun run always-on`)
+1. **One bundled bill** — Grok rolls VM + models into subscription; Sora = E2B + OpenRouter/OpenAI bills separately  
+2. **Always-on 24/7** — needs hosted runtime or always-on service (see [always-on.md](./always-on.md))  
+3. **Demo → routine** — watch-once teaching UX not shipped  
+4. **iOS** — not started  
 
-## Architecture note
+## Architecture
 
-Grok Bot = vendor cloud control plane + cloud Computer.  
-Sora = **local control plane** + **pluggable Computer**. Matching the *user journey* does not require matching the SaaS deployment model.
-
-See [computer.md](./computer.md) and [always-on.md](./always-on.md).
+```
+Desktop app (chat, settings, no Sora login)
+        ↓
+   Local API (~/.sora)
+        ↓
+   Cloud sandbox VM (E2B) ← bot computer
+        ↓
+   Your model API (BYO subscription)
+```

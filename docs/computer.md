@@ -1,78 +1,64 @@
 # Computer
 
-The **Computer** is the agent’s coworker machine: filesystem, terminal, browser, and optionally a watchable display. Chat, secrets, and approvals stay on your machine; where the Computer *runs* is a provider choice.
+Each bot gets **its own cloud sandbox** — a virtual machine with browser, files, terminal, and a watchable desktop. This is the Grok Bot model: work runs in the cloud so jobs do not stall when you step away.
 
 ```text
-you → task → agent (local control plane)
+you → task → bot (local app / chat)
                 ↓
-         Computer provider
-         local | e2b | docker* | remote* | host*
+         Cloud sandbox VM (E2B)
+         browser · files · terminal · desktop stream
 ```
 
-\* Planned — selecting them fails closed with a clear error today.
+Chat, secrets, and approvals stay in the desktop app (`~/.sora`). Execution happens in the VM.
 
-## Providers
+## Default: E2B cloud sandbox
 
-| Provider | Status | Terminal | Files | Browser | Live display |
-|----------|--------|----------|-------|---------|--------------|
-| `local` | **Default, working** | Host (scrubbed env) | Agent workspace jail | Playwright Chromium | Watch + screenshots |
-| `e2b` | **Opt-in, working** | Firecracker microVM | Sync to/from workspace | Local Playwright | Watch host browser |
-| `docker` | **Opt-in, working** | Linux container (bind mount) | Shared via volume | Local Playwright | Watch host browser |
-| `fake` | Tests only | In-memory | In-memory | — | — |
-| `daytona` / `remote` / `host` | Not shipped | — | — | — | — |
+Onboarding asks for an **E2B key** — that spins up isolated Firecracker microVMs with a full Linux desktop when needed.
+
+| Capability | Status |
+|------------|--------|
+| Terminal + files in VM | **Working** |
+| Desktop stream (Watch / Open desktop) | **Working** (`@e2b/desktop`) |
+| Browser inside VM | **Working** on cloud desktop |
+| Sign into tools on desktop | **Working** via Open desktop takeover |
+| Always-on 24/7 without your PC | **Partial** — VM TTL + need runtime/API up |
 
 Config (`~/.sora/config.json`):
 
 ```json
 {
   "computer": {
-    "provider": "local",
+    "provider": "e2b",
+    "preferDisplay": true,
     "failClosed": true,
     "idleMs": 600000,
-    "commandTimeoutMs": 120000,
-    "preferDisplay": true
+    "commandTimeoutMs": 120000
   }
 }
 ```
 
-Legacy `sandbox.enabled` + `sandbox.provider` still loads and maps into `computer`. Prefer `computer` for new setups.
+## Watch & takeover
 
-## Local Computer (default)
+| Action | How |
+|--------|-----|
+| **Watch** | Polls `GET /api/agents/:slug/computer/display` for desktop screenshots |
+| **Open desktop** | Live stream URL via `POST …/computer/takeover` — sign in, 2FA, click through UIs |
 
-- Workspace under `~/.sora/agents/<slug>/workspace`
-- Terminal does **not** inherit host `process.env` (API keys stay out)
-- Browser profile can persist cookies/logins per agent
-- UI Computer panel can request browser screenshots
+## Other providers (advanced)
 
-## E2B Computer (opt-in)
+| Provider | Use |
+|----------|-----|
+| `local` | Dev / fallback — runs on your PC |
+| `docker` | Local Linux container |
+| `daytona` / `remote` / `host` | Not shipped yet |
 
-1. Save an E2B API key under Models & providers (or `E2B_API_KEY`).
-2. Computer panel → enable cloud sandbox, **or** set `"computer": { "provider": "e2b" }`.
-3. Terminal + file sync run in the microVM; browser stays on the host for cost/size.
+Fail-closed: missing E2B key → clear error, never silent fallback to your host shell.
 
-Fail-closed: missing key or VM start failure → **error**, never silent host shell. Details: [sandbox-security.md](./sandbox-security.md).
+## What's still missing vs Grok Bot
 
-## Display (“watch the computer”)
+1. **Bundled VM** in one subscription (Sora uses BYO E2B today)  
+2. **Demo capture → routine** (screen recording UX)  
+3. **24/7 hosted control plane** without your desktop app running  
+4. **Native iOS** messaging surface  
 
-| Mode | Today |
-|------|--------|
-| Local headed Playwright | You can watch the real window on this machine |
-| **Watch** in Computer panel | Polls `GET /api/agents/:slug/computer/display` every 2s |
-| Live remote desktop stream (cloud GUI) | **Not yet** — needs a desktop-capable provider |
-
-## Always-on
-
-```bash
-bun run always-on          # print instructions
-bun run always-on:write    # write Task Scheduler / LaunchAgent files under ~/.sora/service
-```
-
-See [always-on.md](./always-on.md).
-
-## What “100% coworker Computer” still needs
-
-1. Persistent remote **desktop** Computer with a live stream (not just host browser)  
-2. Optional VPS (`remote`) SSH provider  
-3. Explicit `host` provider (control your real desktop) — high risk, opt-in only  
-
-Product-level gap list: [parity.md](./parity.md).
+See [parity.md](./parity.md).

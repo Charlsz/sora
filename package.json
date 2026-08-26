@@ -10,6 +10,7 @@
     "desktop": "bun --filter @sora/desktop start",
     "desktop:dev": "bun --filter @sora/desktop dev",
     "desktop:build": "bun scripts/build-sidecar.ts && bun --filter @sora/desktop build",
+    "desktop:package": "bun scripts/package-desktop.ts",
     "sidecar": "bun scripts/build-sidecar.ts",
     "dev:web": "bun --filter @sora/web dev",
     "build:web": "bun --filter @sora/web build",

@@ -1,39 +1,43 @@
 # Sora
 
-Local-first open-source agent workspace for Windows and macOS. Bring your own models, keep data under `~/.sora`, approve what agents touch.
+**Open-source Grok Bot** — AI teammates with a cloud computer. Bring your own model subscription (OpenAI, Grok, OpenRouter). No Sora account. No Grok Bot fee.
 
-**Docs:** [docs/index.md](docs/index.md) (start with [getting started](docs/getting-started.md))
+**Docs:** [docs/index.md](docs/index.md) · [overview](docs/overview.md)
 
 ## Quick start
 
 ```bash
 bun install
 bun run sora init
-bun run desktop          # or: bun run sora start  +  bun run dev:web
+bun run desktop
 ```
 
-Connect a model in **Settings**. Until then, `mock:echo` works offline.
+Onboarding walks you through: **your name → AI key → cloud sandbox key → first bot.**
 
 ## What you get
 
-- Agents with streaming chat, tools, skills, and multi-agent handoffs
-- Permissions (allow once / session / deny) with timeouts
-- Routines: cron, webhooks, save-from-chat
-- Local computer (files, shell, browser) + optional E2B sandbox
-- MCP, OpenAPI, and connector plugins
+- Teammates you message like coworkers (Sales, Inbox, Ops, …)
+- Each bot runs in a **cloud sandbox VM** (browser, files, terminal, desktop)
+- **Watch** / **Open desktop** — sign into tools, approve when needed
+- Routines, multi-bot handoffs, Composio connectors
+- Keys stay on your machine (`~/.sora`); **you pay providers directly**
 
-## Not in v1
+## vs Grok Bot
 
-Mobile, voice, hosted always-on relay, full cloud GUI desktop, Linux installers. See [docs/overview.md](docs/overview.md).
+| Grok Bot | Sora |
+|----------|------|
+| Paid subscription | **Free OSS app** |
+| Sign in to SpaceXAI | **No Sora login** |
+| Bundled models + VM | **BYO API keys + E2B sandbox** |
 
 ## Develop
 
 ```bash
 bun test
-bun run sora --help
+bun run desktop:package   # Win/Mac installers
 ```
 
-Desktop CI builds Windows and macOS. Tag `v*` for draft GitHub releases.
+Tag `v*` for draft GitHub releases.
 
 ## License
 

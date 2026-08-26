@@ -29,9 +29,12 @@ If you see “API is offline” in a packaged app:
 |---------|-----|
 | `bun run desktop` | Native `tauri dev` (Win/Mac) |
 | `bun run desktop:build` | Sidecar + Tauri installer |
+| `bun run desktop:package` | Same as build + print artifact paths + smoke checklist |
 | `bun --filter @sora/desktop run build:xwin` | Cross-compile with `cargo-xwin` only when needed |
 
 Do **not** use `cargo-xwin` for day-to-day Win/Mac native builds.
+
+`beforeBuildCommand` (`scripts/tauri-before-build.ts`) always rebuilds the sidecar and `apps/web` dist before bundling.
 
 ## Sidecar
 
@@ -39,9 +42,28 @@ Built by `scripts/build-sidecar.ts` into `apps/desktop/src-tauri/binaries/sora-r
 
 Tauri `lib.rs` tries: next to the exe → resources → binaries → `bun cli/src/bin.ts` fallback in dev.
 
+## Release (downloadable installers)
+
+1. Bump `version` in root `package.json` and `apps/desktop/src-tauri/tauri.conf.json` if needed.
+2. Tag and push:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+3. GitHub Actions (`.github/workflows/desktop.yml`) builds:
+   - **Windows:** NSIS + MSI
+   - **macOS:** DMG + `.app`
+4. A **draft** GitHub Release named `Sora v0.1.0` is created with the installers attached. Publish when ready.
+
+Local smoke without tagging: `bun run desktop:package` on Windows or macOS.
+
 ## Browser in packaged apps
 
-Playwright Chromium may still need a one-time install. Prefer the Computer panel **Install Chromium** button while Bun is available, or run `bunx playwright install chromium` once on the machine.
+Playwright Chromium may still need a one-time install. Prefer the Computer panel **Install browser** button while Bun is available, or run `bunx playwright install chromium` once on the machine.
+
+**Cloud desktop** (E2B Desktop) does not need local Chromium — use Workspace → Cloud desktop → Open desktop.
 
 ## Signing
 
@@ -50,7 +72,7 @@ CI can produce unsigned/ad-hoc builds. macOS notarization needs `APPLE_*` secret
 ## Smoke test (packaged)
 
 1. Launch the app → footer shows **Runtime online**.
-2. Create agent → set model → Test connection.
+2. Onboarding → local name → keys or Skip.
 3. Chat → tool approval appears → Allow once.
-4. Routines → create manual → Run.
+4. Workspace → Cloud desktop (E2B key) → Open desktop / Watch.
 5. Quit app → sidecar should stop if it was spawned by the app.
