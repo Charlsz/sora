@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { openExternalUrl } from "../openExternal";
 import { soraApi } from "../api";
 
 export type ComputerRunMode = "local" | "sandbox" | "off";
@@ -153,19 +154,33 @@ export default function ComputerPanel({
   }
 
   async function openDesktop() {
-    if (!agentSlug || mode !== "sandbox") return;
+    if (!agentSlug) return;
+    if (mode !== "sandbox") {
+      setError("Set Runs on → Sandbox first, then Take control.");
+      return;
+    }
     setBusy(true);
     setError(null);
     setBooting(true);
     try {
-      await ensureCloudComputer();
+      const ready = await ensureCloudComputer();
+      if (!ready) {
+        setError("Add an E2B key under Connected apps so the sandbox can start.");
+        return;
+      }
+      // Warm the desktop stream (screenshot poll) before takeover.
+      await soraApi.computerDisplay(agentSlug).catch(() => null);
       const result = await soraApi.computerTakeover(agentSlug);
       if (!result.ok || !result.streamUrl) {
-        setError(result.message || "Couldn’t open the desktop.");
+        setError(
+          result.message ||
+            result.error ||
+            "Couldn’t open the desktop. Check the E2B key and try again.",
+        );
         return;
       }
       setConnected(true);
-      window.open(result.streamUrl, "_blank", "noopener,noreferrer");
+      await openExternalUrl(result.streamUrl);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -282,14 +297,20 @@ export default function ComputerPanel({
           </div>
 
           {mode === "sandbox" && computerReady && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void openDesktop()}
-              className="w-full rounded-control bg-ink px-3 py-2 text-[13px] font-medium text-surface disabled:opacity-50"
-            >
-              {busy ? "Opening…" : "Open desktop"}
-            </button>
+            <div className="flex flex-col gap-1.5">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void openDesktop()}
+                className="w-full rounded-control bg-ink px-3 py-2 text-[13px] font-medium text-surface disabled:opacity-50"
+              >
+                {busy ? "Opening…" : "Take control"}
+              </button>
+              <p className="text-[11.5px] leading-snug text-ink-3">
+                Preview above is watch-only. Take control opens a full window
+                where you can use mouse and keyboard.
+              </p>
+            </div>
           )}
 
           {working && taskPath && mode !== "off" && (

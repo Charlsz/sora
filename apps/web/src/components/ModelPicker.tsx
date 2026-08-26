@@ -75,7 +75,7 @@ export default function ModelPicker({
             {providerModels.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.name}
-                {m.description ? ` — ${m.description}` : ""}
+                {m.description ? ` · ${m.description}` : ""}
               </option>
             ))}
           </select>

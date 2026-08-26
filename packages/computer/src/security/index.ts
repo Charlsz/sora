@@ -3,4 +3,5 @@ export {
   collectSecretValues,
   isForbiddenEnvKey,
   scrubSecretsFromText,
+  scrubSensitivePatterns,
 } from "./env.ts";

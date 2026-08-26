@@ -23,5 +23,8 @@ Base: `http://127.0.0.1:7420` (local only).
 | GET | `/api/events` | SSE event stream |
 | GET | `/api/permissions/pending` | Open asks |
 | POST | `/api/permissions/respond` | `{ requestId, decision, rememberSession? }` |
+| POST | `/api/botdirectory/import` | Create teammate shell; returns `{ agent, setupPrompt }` — send `setupPrompt` as first chat message |
+| GET/POST | `/api/vault` | List secret labels / save encrypted vault entry (values never returned raw) |
+| DELETE | `/api/vault/:id` | Remove vault entry |
 
 CORS allows local origins including Tauri; methods include **PATCH**.

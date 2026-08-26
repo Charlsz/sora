@@ -12,6 +12,7 @@ import {
   saveSecrets,
   type ProviderCredential,
   type SoraSecrets,
+  type VaultEntry,
 } from "./secrets.ts";
 
 export type RuntimeOptions = {
@@ -203,23 +204,57 @@ export class SoraRuntime {
       providers[providerId] = nextCred;
     }
 
-    const next: SoraSecrets = {
-      version: 1,
-      providers,
-      updatedAt: new Date().toISOString(),
-    };
-    saveSecrets(this.paths.secrets, next);
-    this.#secrets = next;
-    return next;
+    return this.#persistSecrets({ providers });
   }
 
   clearProviderCredential(providerId: string): SoraSecrets {
     this.ensureInitialized();
     const providers = { ...this.secrets.providers };
     delete providers[providerId];
+    return this.#persistSecrets({ providers });
+  }
+
+  upsertVaultEntry(input: {
+    id?: string;
+    label: string;
+    value: string;
+    kind?: VaultEntry["kind"];
+  }): SoraSecrets {
+    this.ensureInitialized();
+    const label = input.label.trim();
+    const value = input.value.trim();
+    if (!label || !value) {
+      throw new Error("label and value are required");
+    }
+    const kind = input.kind ?? "other";
+    const vault = [...(this.secrets.vault ?? [])];
+    const id = input.id?.trim() || crypto.randomUUID();
+    const idx = vault.findIndex((e) => e.id === id);
+    const entry = {
+      id,
+      label,
+      value,
+      kind,
+      updatedAt: new Date().toISOString(),
+    };
+    if (idx >= 0) vault[idx] = entry;
+    else vault.push(entry);
+    return this.#persistSecrets({ vault });
+  }
+
+  deleteVaultEntry(id: string): SoraSecrets {
+    this.ensureInitialized();
+    const vault = (this.secrets.vault ?? []).filter((e) => e.id !== id);
+    return this.#persistSecrets({ vault });
+  }
+
+  #persistSecrets(
+    patch: Partial<Pick<SoraSecrets, "providers" | "vault">>,
+  ): SoraSecrets {
     const next: SoraSecrets = {
       version: 1,
-      providers,
+      providers: patch.providers ?? this.secrets.providers,
+      vault: patch.vault ?? this.secrets.vault ?? [],
       updatedAt: new Date().toISOString(),
     };
     saveSecrets(this.paths.secrets, next);

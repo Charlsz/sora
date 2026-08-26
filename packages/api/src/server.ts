@@ -4,6 +4,7 @@ import {
   loadOpenApiConfig,
   publicMcpServers,
   publicOpenApiSpecs,
+  publicVaultEntries,
   saveMcpConfig,
   saveOpenApiConfig,
   type McpServerConfig,
@@ -93,6 +94,7 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
             name?: string;
             description?: string;
             model?: string;
+            instructions?: string;
           };
           try {
             const agent = services.agents.create(
@@ -100,6 +102,7 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
                 name: body.name,
                 description: body.description,
                 model: body.model,
+                instructions: body.instructions,
               },
               services.runtime.config.defaultModel,
             );
@@ -393,6 +396,57 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
           );
         }
 
+        if (url.pathname === "/api/vault" && req.method === "GET") {
+          return json(
+            { entries: publicVaultEntries(services.runtime.secrets) },
+            cors,
+          );
+        }
+
+        if (url.pathname === "/api/vault" && req.method === "POST") {
+          const body = (await req.json()) as {
+            id?: string;
+            label?: string;
+            value?: string;
+            kind?: "password" | "email" | "api_key" | "other";
+          };
+          try {
+            services.runtime.upsertVaultEntry({
+              id: body.id,
+              label: body.label ?? "",
+              value: body.value ?? "",
+              kind: body.kind,
+            });
+            return json(
+              {
+                ok: true,
+                entries: publicVaultEntries(services.runtime.secrets),
+              },
+              cors,
+              body.id ? 200 : 201,
+            );
+          } catch (err) {
+            return json(
+              { error: err instanceof Error ? err.message : String(err) },
+              cors,
+              400,
+            );
+          }
+        }
+
+        const vaultDelete = /^\/api\/vault\/([^/]+)$/.exec(url.pathname);
+        if (vaultDelete && req.method === "DELETE") {
+          const id = decodeURIComponent(vaultDelete[1]!);
+          services.runtime.deleteVaultEntry(id);
+          return json(
+            {
+              ok: true,
+              entries: publicVaultEntries(services.runtime.secrets),
+            },
+            cors,
+          );
+        }
+
         if (url.pathname === "/api/mcp" && req.method === "GET") {
           const cfg = loadMcpConfig(services.runtime.paths.mcp);
           return json({ servers: publicMcpServers(cfg) }, cors);
@@ -593,6 +647,29 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
           return json({ source, bots }, cors);
         }
 
+        const bdGet = /^\/api\/botdirectory\/bots\/([^/]+)$/.exec(url.pathname);
+        if (bdGet && req.method === "GET") {
+          const slug = decodeURIComponent(bdGet[1]!);
+          const catalog = loadCatalog(
+            services.runtime.paths.botdirectoryCatalog,
+          );
+          let bot: BotdirectoryBot | undefined = catalog.bots[slug];
+          if (!bot) {
+            const live = await listBots({
+              q: slug,
+              limit: 50,
+              sort: "name",
+            });
+            bot =
+              live.bots.find((b) => b.slug === slug) ??
+              live.bots.find((b) => b.slug.includes(slug));
+          }
+          if (!bot) {
+            return json({ error: `bot "${slug}" not found` }, cors, 404);
+          }
+          return json({ bot }, cors);
+        }
+
         if (url.pathname === "/api/botdirectory/sync" && req.method === "POST") {
           const body = (await req.json().catch(() => ({}))) as {
             full?: boolean;
@@ -694,36 +771,73 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
             name?: string;
             model?: string;
           };
-          const slug = body.slug?.trim();
-          if (!slug) return json({ error: "slug required" }, cors, 400);
+          const listingSlug = body.slug?.trim();
+          if (!listingSlug) return json({ error: "slug required" }, cors, 400);
           const catalog = loadCatalog(
             services.runtime.paths.botdirectoryCatalog,
           );
-          let bot: BotdirectoryBot | undefined = catalog.bots[slug];
+          let bot: BotdirectoryBot | undefined = catalog.bots[listingSlug];
           if (!bot) {
-            const live = await listBots({ q: slug, limit: 50, sort: "name" });
-            bot = live.bots.find((b) => b.slug === slug);
+            const live = await listBots({
+              q: listingSlug,
+              limit: 50,
+              sort: "name",
+            });
+            bot = live.bots.find((b) => b.slug === listingSlug);
           }
           if (!bot) {
-            return json({ error: `bot "${slug}" not found` }, cors, 404);
+            return json(
+              { error: `bot "${listingSlug}" not found` },
+              cors,
+              404,
+            );
           }
+          /**
+           * Bot Directory contract: listings are conversational *setup prompts*,
+           * not finished system prompts. Create a teammate shell; the client
+           * should send `setupPrompt` as the first user message.
+           * @see https://botdirectory.ai/developers/
+           */
+          const integrations = bot.integrations.join(", ") || "as needed";
           const agent = services.agents.create(
             {
               name: body.name?.trim() || bot.name,
-              description: `Imported from botdirectory.ai (${bot.slug}) · ${bot.category}`,
+              description:
+                bot.integrations.length > 0
+                  ? `${bot.category} · ${bot.integrations.join(", ")}`
+                  : bot.category,
               instructions: [
-                bot.prompt,
-                "",
+                `You are ${body.name?.trim() || bot.name}, being set up from Bot Directory (${bot.slug}).`,
+                "The user's first message is the official setup prompt from botdirectory.ai.",
+                "Follow that prompt in this chat only.",
+                "Never use delegate_task during setup — apps like Gmail, Calendar, Slack, and X are not teammates.",
+                "Ask the setup questions first. For connections, tell the user to tap + in the message bar (or Connected apps) and link via Composio.",
+                `Integrations this listing expects: ${integrations}.`,
+                "Supervised first run: analyze and recommend only — no calendar writes or outbound messages until they approve.",
+                "Never ask for passwords or API keys in chat.",
                 `Source: ${bot.detailUrl}`,
-                `Integrations: ${bot.integrations.join(", ") || "none"}`,
-                "You run in Sora. Use linked plugins (GitHub, Composio, MCP) when the user connects them.",
-              ].join("\n"),
+              ].join(" "),
               model: body.model,
-              slug: slug.slice(0, 64),
             },
             services.runtime.config.defaultModel,
           );
-          return json({ ok: true, agent, bot }, cors, 201);
+          return json(
+            {
+              ok: true,
+              agent,
+              bot: {
+                slug: bot.slug,
+                name: bot.name,
+                category: bot.category,
+                integrations: bot.integrations,
+                detailUrl: bot.detailUrl,
+              },
+              /** Paste into chat as the first user message (Bot Directory contract). */
+              setupPrompt: bot.prompt,
+            },
+            cors,
+            201,
+          );
         }
 
         if (
@@ -900,21 +1014,16 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
         if (takeoverMatch && req.method === "POST") {
           const slug = decodeURIComponent(takeoverMatch[1]!);
           const agent = services.agents.requireBySlugOrName(slug);
-          await services.permissions.assert({
-            agentId: agent.id,
-            agentSlug: agent.slug,
-            action: "browser.screenshot",
-            resource: "takeover",
-          });
+          // User clicked Take control — no permission prompt (explicit UI action).
           const computer = services.runner.getComputer(agent);
           if (!computer.display?.requestTakeover) {
             return json(
               {
                 ok: false,
                 error:
-                  "This teammate’s computer isn’t a cloud desktop yet. Add an E2B key and set Computer to cloud sandbox.",
+                  "This teammate’s computer isn’t a cloud desktop yet. Add an E2B key and set Computer to Sandbox.",
                 message:
-                  "This teammate’s computer isn’t a cloud desktop yet. Add an E2B key under Connections.",
+                  "This teammate’s computer isn’t a cloud desktop yet. Add an E2B key under Connected apps, then set Runs on → Sandbox.",
               },
               cors,
               400,

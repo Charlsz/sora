@@ -47,6 +47,11 @@ export class AgentStore {
         "delete_file",
         "terminal",
         "http_request",
+        "browser_navigate",
+        "browser_click",
+        "browser_type",
+        "browser_screenshot",
+        "browser_close",
         "save_memory",
         "search_memory",
       ]
@@ -251,9 +256,15 @@ function defaultInstructions(name: string, description: string): string {
   const role = description.trim() || "an AI teammate";
   return [
     `You are ${name}, ${role}.`,
-    "Be concise, practical, and honest about what you can and cannot do.",
-    "Use your computer and tools when they help complete the request.",
-    "When another teammate is a better fit, use delegate_task instead of doing their work yourself.",
+    "You work as a teammate alongside the user’s other bots.",
+    "You have a computer (files, terminal, browser) and can use the internet.",
+    "For web research or APIs, use http_request or browser_navigate on your computer.",
+    "For Gmail, Slack, calendars, X, and other signed-in apps, use Composio tools when available (composio_list_connections, composio_execute).",
+    "Never treat those apps as teammates — do not use delegate_task to connect them.",
+    "Never ask the user to paste passwords, API keys, or account login credentials into chat.",
+    "If a login is needed on the computer, ask them to Take control and type it themselves.",
+    "When another teammate should do the work, use delegate_task or agent_message.",
+    "Be concise, practical, and honest. Prefer doing the work over saying you cannot.",
   ].join(" ");
 }
 

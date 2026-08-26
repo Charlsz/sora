@@ -24,7 +24,7 @@ packages/
 | Path | Role |
 |------|------|
 | `~/.sora/config.json` | Default model, browser, computer |
-| `~/.sora/secrets.json` | Provider keys (mode 0600) |
+| `~/.sora/secrets.json` | Provider keys + vault (AES encrypted; machine key in `.encryption-key`) |
 | `~/.sora/database/sora.sqlite` | Agents, chats, memory, routines |
 | `~/.sora/agents/<slug>/` | Workspace + browser profile |
 | `~/.sora/mcp.json` | MCP servers |

@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 
 export type ProviderCredential = {
   apiKey?: string;
@@ -9,13 +9,23 @@ export type ProviderCredential = {
   username?: string;
 };
 
-export type SoraSecrets = {
-  version: 1;
-  providers: Record<string, ProviderCredential>;
+/** User-labeled secrets (passwords, emails) — never returned raw by the API. */
+export type VaultEntry = {
+  id: string;
+  label: string;
+  value: string;
+  kind: "password" | "email" | "api_key" | "other";
   updatedAt: string;
 };
 
-/** On-disk envelope when SORA_ENCRYPTION_KEY is set. */
+export type SoraSecrets = {
+  version: 1;
+  providers: Record<string, ProviderCredential>;
+  vault?: VaultEntry[];
+  updatedAt: string;
+};
+
+/** On-disk envelope when secrets are encrypted at rest. */
 type EncryptedSecretsFile = {
   version: 2;
   algo: "aes-256-gcm";
@@ -28,6 +38,7 @@ type EncryptedSecretsFile = {
 export const EMPTY_SECRETS = (): SoraSecrets => ({
   version: 1,
   providers: {},
+  vault: [],
   updatedAt: new Date().toISOString(),
 });
 
@@ -64,30 +75,46 @@ export function encryptionKeyFromEnv(): string | null {
   return key || null;
 }
 
+/** Path to the machine-local key used when SORA_ENCRYPTION_KEY is unset. */
+export function encryptionKeyPath(secretsPath: string): string {
+  return join(dirname(secretsPath), ".encryption-key");
+}
+
+/**
+ * Prefer SORA_ENCRYPTION_KEY; otherwise use (or create) ~/.sora/.encryption-key.
+ * Secrets are encrypted at rest by default on desktop.
+ */
+export function resolveEncryptionPassphrase(secretsPath: string): string {
+  const fromEnv = encryptionKeyFromEnv();
+  if (fromEnv) return fromEnv;
+
+  const keyPath = encryptionKeyPath(secretsPath);
+  if (existsSync(keyPath)) {
+    const existing = readFileSync(keyPath, "utf8").trim();
+    if (existing) return existing;
+  }
+  mkdirSync(dirname(keyPath), { recursive: true });
+  const generated = randomBytes(32).toString("base64");
+  writeFileSync(keyPath, generated + "\n", { mode: 0o600 });
+  return generated;
+}
+
 export function loadSecrets(path: string): SoraSecrets {
   if (!existsSync(path)) return EMPTY_SECRETS();
   try {
     const text = readFileSync(path, "utf8");
     const parsed = JSON.parse(text) as SoraSecrets | EncryptedSecretsFile;
     if (isEncrypted(parsed)) {
-      const key = encryptionKeyFromEnv();
-      if (!key) {
-        throw new Error(
-          "secrets.json is encrypted. Set SORA_ENCRYPTION_KEY to decrypt.",
-        );
-      }
-      return decryptSecrets(parsed, key);
+      const key = resolveEncryptionPassphrase(path);
+      return normalizeSecrets(decryptSecrets(parsed, key));
     }
-    return {
-      version: 1,
-      providers: (parsed as SoraSecrets).providers ?? {},
-      updatedAt:
-        (parsed as SoraSecrets).updatedAt ?? new Date().toISOString(),
-    };
+    return normalizeSecrets(parsed as SoraSecrets);
   } catch (error) {
     if (
       error instanceof Error &&
-      error.message.includes("SORA_ENCRYPTION_KEY")
+      (error.message.includes("SORA_ENCRYPTION_KEY") ||
+        error.message.includes("Unsupported state") ||
+        error.message.includes("bad decrypt"))
     ) {
       throw error;
     }
@@ -97,15 +124,14 @@ export function loadSecrets(path: string): SoraSecrets {
 
 export function saveSecrets(path: string, secrets: SoraSecrets): void {
   mkdirSync(dirname(path), { recursive: true });
-  const next: SoraSecrets = {
+  const next = normalizeSecrets({
     ...secrets,
     version: 1,
     updatedAt: new Date().toISOString(),
-  };
-  const key = encryptionKeyFromEnv();
-  const payload = key
-    ? JSON.stringify(encryptSecrets(next, key), null, 2) + "\n"
-    : JSON.stringify(next, null, 2) + "\n";
+  });
+  const key = resolveEncryptionPassphrase(path);
+  const payload =
+    JSON.stringify(encryptSecrets(next, key), null, 2) + "\n";
   writeFileSync(path, payload, { mode: 0o600 });
 }
 
@@ -113,6 +139,33 @@ export function maskSecret(value: string | undefined): string | null {
   if (!value) return null;
   if (value.length <= 8) return "••••";
   return `${value.slice(0, 3)}…${value.slice(-4)}`;
+}
+
+export function publicVaultEntries(
+  secrets: SoraSecrets,
+): Array<{
+  id: string;
+  label: string;
+  kind: VaultEntry["kind"];
+  hint: string | null;
+  updatedAt: string;
+}> {
+  return (secrets.vault ?? []).map((e) => ({
+    id: e.id,
+    label: e.label,
+    kind: e.kind,
+    hint: maskSecret(e.value),
+    updatedAt: e.updatedAt,
+  }));
+}
+
+function normalizeSecrets(parsed: SoraSecrets): SoraSecrets {
+  return {
+    version: 1,
+    providers: parsed.providers ?? {},
+    vault: Array.isArray(parsed.vault) ? parsed.vault : [],
+    updatedAt: parsed.updatedAt ?? new Date().toISOString(),
+  };
 }
 
 function isEncrypted(value: unknown): value is EncryptedSecretsFile {
@@ -126,7 +179,12 @@ function isEncrypted(value: unknown): value is EncryptedSecretsFile {
 
 function deriveKey(passphrase: string, salt: Buffer): Buffer {
   // N=16384 is interactive-login cost; fine for desktop secrets at rest.
-  return scryptSync(passphrase, salt, 32, { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 });
+  return scryptSync(passphrase, salt, 32, {
+    N: 16384,
+    r: 8,
+    p: 1,
+    maxmem: 64 * 1024 * 1024,
+  });
 }
 
 export function encryptSecrets(
@@ -165,10 +223,5 @@ export function decryptSecrets(
     decipher.update(ciphertext),
     decipher.final(),
   ]).toString("utf8");
-  const parsed = JSON.parse(plain) as SoraSecrets;
-  return {
-    version: 1,
-    providers: parsed.providers ?? {},
-    updatedAt: parsed.updatedAt ?? new Date().toISOString(),
-  };
+  return normalizeSecrets(JSON.parse(plain) as SoraSecrets);
 }

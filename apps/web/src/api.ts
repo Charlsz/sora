@@ -191,7 +191,7 @@ function detectApiBase(): string {
       port &&
       port !== "7420"
     ) {
-      // Vite/Tauri-dev UI on :5173 — relative URLs use the Vite proxy.
+      // Vite/Tauri-dev UI on :5173; relative URLs use the Vite proxy.
       return "";
     }
   }
@@ -232,10 +232,53 @@ export const soraApi = {
   health: () => api<{ ok: boolean }>("/api/health"),
   agents: () => api<Agent[]>("/api/agents"),
   agent: (slug: string) => api<Agent>(`/api/agents/${slug}`),
-  createAgent: (body?: { name?: string; description?: string }) =>
+  createAgent: (body?: {
+    name?: string;
+    description?: string;
+    instructions?: string;
+  }) =>
     api<Agent>("/api/agents", {
       method: "POST",
       body: JSON.stringify(body ?? {}),
+    }),
+  vaultList: () =>
+    api<{
+      entries: Array<{
+        id: string;
+        label: string;
+        kind: string;
+        hint: string | null;
+        updatedAt: string;
+      }>;
+    }>("/api/vault"),
+  vaultSave: (body: {
+    id?: string;
+    label: string;
+    value: string;
+    kind?: "password" | "email" | "api_key" | "other";
+  }) =>
+    api<{
+      ok: boolean;
+      entries: Array<{
+        id: string;
+        label: string;
+        kind: string;
+        hint: string | null;
+        updatedAt: string;
+      }>;
+    }>("/api/vault", { method: "POST", body: JSON.stringify(body) }),
+  vaultDelete: (id: string) =>
+    api<{
+      ok: boolean;
+      entries: Array<{
+        id: string;
+        label: string;
+        kind: string;
+        hint: string | null;
+        updatedAt: string;
+      }>;
+    }>("/api/vault/" + encodeURIComponent(id), {
+      method: "DELETE",
     }),
   updateAgent: (
     slug: string,
@@ -295,6 +338,7 @@ export const soraApi = {
       ok: boolean;
       streamUrl?: string;
       message: string;
+      error?: string;
     }>(`/api/agents/${encodeURIComponent(slug)}/computer/takeover`, {
       method: "POST",
     }),
@@ -393,6 +437,17 @@ export const soraApi = {
       }>;
     }>(`/api/botdirectory/bots${suffix}`);
   },
+  botdirectoryBot: (slug: string) =>
+    api<{
+      bot: {
+        slug: string;
+        name: string;
+        category: string;
+        integrations: string[];
+        prompt: string;
+        detailUrl?: string;
+      };
+    }>(`/api/botdirectory/bots/${encodeURIComponent(slug)}`),
   botdirectorySync: (body?: {
     full?: boolean;
     reset?: boolean;
@@ -413,7 +468,18 @@ export const soraApi = {
       { method: "PUT", body: JSON.stringify(body) },
     ),
   botdirectoryImport: (body: { slug: string; name?: string }) =>
-    api<{ ok: boolean; agent: Agent }>("/api/botdirectory/import", {
+    api<{
+      ok: boolean;
+      agent: Agent;
+      setupPrompt: string;
+      bot: {
+        slug: string;
+        name: string;
+        category: string;
+        integrations: string[];
+        detailUrl: string;
+      };
+    }>("/api/botdirectory/import", {
       method: "POST",
       body: JSON.stringify(body),
     }),

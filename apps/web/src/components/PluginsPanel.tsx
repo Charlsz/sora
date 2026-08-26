@@ -1,5 +1,6 @@
+import { openExternalUrl } from "../openExternal";
 import { useEffect, useState } from "react";
-import { soraApi, type PluginStatus } from "../api";
+import { soraApi, type Agent, type PluginStatus } from "../api";
 import McpServersPanel from "./McpServersPanel";
 
 type BdStatus = Awaited<ReturnType<typeof soraApi.botdirectoryStatus>>;
@@ -9,8 +10,13 @@ type BdBot = Awaited<
 
 export default function PluginsPanel({
   onChanged,
+  onSetupFromDirectory,
 }: {
   onChanged?: () => void;
+  onSetupFromDirectory?: (
+    agent: Agent,
+    setupPrompt: string,
+  ) => void | Promise<void>;
 }) {
   const [plugins, setPlugins] = useState<PluginStatus[]>([]);
   const [keys, setKeys] = useState<Record<string, string>>({});
@@ -25,12 +31,32 @@ export default function PluginsPanel({
   const [bdPass, setBdPass] = useState("");
   const [bdQuery, setBdQuery] = useState("");
   const [bdBots, setBdBots] = useState<BdBot[]>([]);
+  const [vault, setVault] = useState<
+    Array<{
+      id: string;
+      label: string;
+      kind: string;
+      hint: string | null;
+      updatedAt: string;
+    }>
+  >([]);
+  const [vaultLabel, setVaultLabel] = useState("");
+  const [vaultValue, setVaultValue] = useState("");
+  const [vaultKind, setVaultKind] = useState<
+    "password" | "email" | "api_key" | "other"
+  >("password");
 
   async function refresh() {
     const data = await soraApi.plugins();
     setPlugins(data.plugins);
     const status = await soraApi.botdirectoryStatus();
     setBd(status);
+    try {
+      const v = await soraApi.vaultList();
+      setVault(v.entries);
+    } catch {
+      setVault([]);
+    }
   }
 
   useEffect(() => {
@@ -84,7 +110,7 @@ export default function PluginsPanel({
       const result = await soraApi.connectPlugin(id, app);
       setMessage(result.message);
       if (result.redirectUrl) {
-        window.open(result.redirectUrl, "_blank", "noopener,noreferrer");
+        await openExternalUrl(result.redirectUrl);
       }
       await refresh();
       onChanged?.();
@@ -138,8 +164,15 @@ export default function PluginsPanel({
     setError(null);
     try {
       const result = await soraApi.botdirectoryImport({ slug });
-      setMessage(`Imported agent “${result.agent.name}” (${result.agent.slug})`);
-      onChanged?.();
+      if (onSetupFromDirectory) {
+        await onSetupFromDirectory(result.agent, result.setupPrompt);
+        setMessage(`Setting up “${result.agent.name}” in chat…`);
+      } else {
+        setMessage(
+          `Started “${result.agent.name}” — open their chat to continue setup`,
+        );
+        onChanged?.();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -159,7 +192,7 @@ export default function PluginsPanel({
       const result = await soraApi.botdirectorySignup(username);
       setBdSignup("");
       await refresh();
-      setMessage(`Signed up @${result.username} — password stored locally`);
+      setMessage(`Signed up @${result.username}. Password stored locally`);
       onChanged?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -195,13 +228,53 @@ export default function PluginsPanel({
     }
   }
 
+  async function saveVault() {
+    if (!vaultLabel.trim() || !vaultValue.trim()) {
+      setError("Add a label and the secret value.");
+      return;
+    }
+    setBusy("vault");
+    setError(null);
+    try {
+      const result = await soraApi.vaultSave({
+        label: vaultLabel.trim(),
+        value: vaultValue.trim(),
+        kind: vaultKind,
+      });
+      setVault(result.entries);
+      setVaultLabel("");
+      setVaultValue("");
+      setMessage("Secret saved locally (encrypted). Values are never shown again.");
+      onChanged?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function removeVault(id: string) {
+    setBusy(`vault:${id}`);
+    try {
+      const result = await soraApi.vaultDelete(id);
+      setVault(result.entries);
+      setMessage("Secret removed");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const composio = plugins.find((p) => p.id === "composio");
+
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col gap-4">
       <div>
         <h2 className="text-[15px] font-semibold text-ink">Connected apps</h2>
         <p className="mt-0.5 text-[12.5px] text-ink-3">
-          Link trusted tools. Keys stay in ~/.sora/secrets.json — never sent
-          over SSE or logs.
+          Keys and secrets stay on this computer, encrypted. Never paste
+          passwords into teammate chat.
         </p>
       </div>
 
@@ -215,6 +288,178 @@ export default function PluginsPanel({
           {message}
         </p>
       )}
+
+      <section className="rounded-card bg-surface px-4 py-3 shadow-card">
+        <h3 className="text-[14px] font-medium text-ink">
+          Connect apps (Composio)
+        </h3>
+        <ol className="mt-2 list-decimal space-y-1.5 pl-4 text-[12.5px] leading-relaxed text-ink-2">
+          <li>
+            Create a free project at{" "}
+            <a
+              href="https://app.composio.dev"
+              target="_blank"
+              rel="noreferrer"
+              className="underline hover:text-ink"
+            >
+              app.composio.dev
+            </a>{" "}
+            and copy the API key.
+          </li>
+          <li>Paste the key below and save it (stays on this PC).</li>
+          <li>
+            Pick an app (Gmail, X, Slack, …) and click Link — your browser opens
+            that app’s normal login. Finish once; teammates reuse it.
+          </li>
+        </ol>
+        <div className="mt-3 flex flex-col gap-2">
+          <input
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="Composio API key"
+            value={keys.composio ?? ""}
+            onChange={(e) =>
+              setKeys((prev) => ({ ...prev, composio: e.target.value }))
+            }
+            className="h-9 w-full rounded-control border border-line bg-field px-3 font-mono text-[12.5px] text-ink outline-none focus:border-line-strong"
+          />
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={busy === "composio"}
+              onClick={() => void saveKey("composio")}
+              className="rounded-control bg-ink px-3 py-1.5 text-[12.5px] font-medium text-surface disabled:opacity-50"
+            >
+              {busy === "composio" ? "Saving…" : "Save Composio key"}
+            </button>
+            {composio?.configured && (
+              <button
+                type="button"
+                disabled={busy === "clear:composio"}
+                onClick={() => void clearKey("composio")}
+                className="rounded-control bg-hover-2 px-3 py-1.5 text-[12.5px] font-medium text-ink-2"
+              >
+                Clear
+              </button>
+            )}
+            <span
+              className={`self-center rounded-control px-2 py-0.5 text-[11px] font-medium ${
+                composio?.configured
+                  ? "bg-inset text-ink"
+                  : "bg-field text-ink-3"
+              }`}
+            >
+              {composio?.configured ? "key saved" : "not set"}
+            </span>
+          </div>
+        </div>
+        {composio?.configured && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
+            <select
+              value={linkApp.composio ?? composio.apps[0] ?? "gmail"}
+              onChange={(e) =>
+                setLinkApp((prev) => ({
+                  ...prev,
+                  composio: e.target.value,
+                }))
+              }
+              className="h-8 rounded-control border border-line bg-field px-2 text-[12.5px] text-ink"
+            >
+              {composio.apps.map((app) => (
+                <option key={app} value={app}>
+                  {app}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={Boolean(busy?.startsWith("connect:composio"))}
+              onClick={() =>
+                void connect(
+                  "composio",
+                  linkApp.composio ?? composio.apps[0] ?? "gmail",
+                )
+              }
+              className="rounded-control bg-ink px-3 py-1.5 text-[12.5px] font-medium text-surface"
+            >
+              Link account
+            </button>
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-card bg-surface px-4 py-3 shadow-card">
+        <h3 className="text-[14px] font-medium text-ink">Private secrets</h3>
+        <p className="mt-0.5 text-[12.5px] text-ink-2">
+          Store emails or passwords you might need later. They’re encrypted on
+          disk and never returned to the UI in full. Prefer Composio for app
+          logins; use Take control on the computer when a site needs a password
+          typed by you.
+        </p>
+        <div className="mt-3 flex flex-col gap-2">
+          <input
+            value={vaultLabel}
+            onChange={(e) => setVaultLabel(e.target.value)}
+            placeholder="Label, e.g. Work Gmail"
+            className="h-9 rounded-control border border-line bg-field px-3 text-[12.5px] text-ink outline-none focus:border-line-strong"
+          />
+          <select
+            value={vaultKind}
+            onChange={(e) =>
+              setVaultKind(e.target.value as typeof vaultKind)
+            }
+            className="h-9 rounded-control border border-line bg-field px-2 text-[12.5px] text-ink"
+          >
+            <option value="password">Password</option>
+            <option value="email">Email</option>
+            <option value="api_key">API key</option>
+            <option value="other">Other</option>
+          </select>
+          <input
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            value={vaultValue}
+            onChange={(e) => setVaultValue(e.target.value)}
+            placeholder="Secret value"
+            className="h-9 rounded-control border border-line bg-field px-3 font-mono text-[12.5px] text-ink outline-none focus:border-line-strong"
+          />
+          <button
+            type="button"
+            disabled={busy === "vault"}
+            onClick={() => void saveVault()}
+            className="self-start rounded-control bg-ink px-3 py-1.5 text-[12.5px] font-medium text-surface disabled:opacity-50"
+          >
+            {busy === "vault" ? "Saving…" : "Save secret"}
+          </button>
+        </div>
+        {vault.length > 0 && (
+          <ul className="mt-3 flex flex-col gap-2 border-t border-line pt-3">
+            {vault.map((e) => (
+              <li
+                key={e.id}
+                className="flex items-center justify-between gap-2 text-[12.5px]"
+              >
+                <span className="min-w-0 truncate text-ink">
+                  {e.label}{" "}
+                  <span className="text-ink-3">
+                    · {e.kind} · {e.hint}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  disabled={busy === `vault:${e.id}`}
+                  onClick={() => void removeVault(e.id)}
+                  className="shrink-0 text-[11.5px] font-medium text-red"
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <section className="rounded-card bg-surface px-4 py-3 shadow-card">
         <div className="flex items-start justify-between gap-3">
@@ -293,7 +538,7 @@ export default function PluginsPanel({
                     {bot.name}
                   </p>
                   <p className="text-[11.5px] text-ink-3">
-                    {bot.category} · {bot.integrations.join(", ") || "—"}
+                    {bot.category} · {bot.integrations.join(", ") || "–"}
                   </p>
                 </div>
                 <button
@@ -357,10 +602,9 @@ export default function PluginsPanel({
       </section>
 
       {plugins
-        .filter((p) => p.id !== "botdirectory")
+        .filter((p) => p.id !== "botdirectory" && p.id !== "composio")
         .map((plugin) => {
-          const selectedApp = linkApp[plugin.id] ?? plugin.apps[0] ?? plugin.id;
-          const needsKey = plugin.id === "github" || plugin.id === "composio";
+          const needsKey = plugin.id === "github";
           return (
             <section
               key={plugin.id}
@@ -432,47 +676,12 @@ export default function PluginsPanel({
                 </div>
               )}
 
-              {plugin.id === "composio" && plugin.configured && (
-                <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
-                  <select
-                    value={selectedApp}
-                    onChange={(e) =>
-                      setLinkApp((prev) => ({
-                        ...prev,
-                        [plugin.id]: e.target.value,
-                      }))
-                    }
-                    className="h-8 rounded-control border border-line bg-field px-2 text-[12.5px] text-ink"
-                  >
-                    {plugin.apps.map((app) => (
-                      <option key={app} value={app}>
-                        {app}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    disabled={Boolean(
-                      busy?.startsWith(`connect:${plugin.id}`),
-                    )}
-                    onClick={() => void connect(plugin.id, selectedApp)}
-                    className="rounded-control bg-ink px-3 py-1.5 text-[12.5px] font-medium text-surface"
-                  >
-                    Link account
-                  </button>
-                </div>
-              )}
-
               {plugin.id === "github" && (
                 <button
                   type="button"
                   className="mt-3 text-[12px] text-ink-2 underline-offset-2 hover:underline"
                   onClick={() =>
-                    window.open(
-                      "https://github.com/settings/tokens",
-                      "_blank",
-                      "noopener,noreferrer",
-                    )
+                    void openExternalUrl("https://github.com/settings/tokens")
                   }
                 >
                   Create a GitHub token →

@@ -57,9 +57,12 @@ export default function PromptBar({
   agents = [],
   skills = [],
   models = [],
+  connections = [],
   model,
   onModelChange,
   onSend,
+  onConnect,
+  onManageConnections,
 }: {
   variant?: string;
   placeholder?: string;
@@ -67,9 +70,13 @@ export default function PromptBar({
   agents?: PromptMenuItem[];
   skills?: PromptMenuItem[];
   models?: PromptMenuItem[];
+  /** Apps the user can link (Composio, etc.). Shown from the + button. */
+  connections?: PromptMenuItem[];
   model?: string;
   onModelChange?: (key: string) => void;
   onSend?: (text: string) => void;
+  onConnect?: (key: string) => void;
+  onManageConnections?: () => void;
 }) {
   const pill = variant === "Pill";
   const [draft, setDraft] = useState("");
@@ -98,8 +105,8 @@ export default function PromptBar({
   const modelRowRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const token = dismissed ? null : parseToken(draft);
-  const menu: "at" | "slash" | null = plusOpen ? "at" : (token?.kind ?? null);
-  const query = plusOpen ? "" : (token?.query ?? "");
+  const menu: "at" | "slash" | null = token?.kind ?? null;
+  const query = token?.query ?? "";
 
   const rows: PromptMenuItem[] =
     menu === "at"
@@ -110,15 +117,19 @@ export default function PromptBar({
           )
         : [];
 
+  const connectionRows = connections;
+
   useEffect(() => {
     setActive(0);
     setEngaged(false);
-  }, [menu, query]);
+  }, [menu, query, plusOpen]);
 
   useLayoutEffect(() => {
+    const list = plusOpen ? connectionRows : rows;
     const target = rowRefs.current[active];
-    if (target) setRowBox({ top: target.offsetTop, height: target.offsetHeight });
-  }, [menu, query, active, rows.length]);
+    if (target && list.length)
+      setRowBox({ top: target.offsetTop, height: target.offsetHeight });
+  }, [menu, query, active, rows.length, plusOpen, connectionRows.length]);
 
   const modelIndex = Math.max(
     0,
@@ -214,7 +225,63 @@ export default function PromptBar({
   return (
     <div data-promptbar className="w-full">
       <div ref={composerAnchorRef} className="relative">
-        {menu && (
+        {plusOpen && (
+          <div
+            className="absolute inset-x-0 bottom-full z-10 mb-2 rounded-[10px] bg-surface p-1 shadow-raised"
+            style={{
+              animation: "pop-in 180ms cubic-bezier(0.23,1,0.32,1) both",
+              transformOrigin: "bottom center",
+            }}
+          >
+            <p className="px-2 py-1.5 text-[11px] font-medium uppercase tracking-wide text-ink-3">
+              Connect apps
+            </p>
+            {connectionRows.map((row, i) => (
+              <button
+                key={row.key}
+                type="button"
+                ref={(el) => {
+                  rowRefs.current[i] = el;
+                }}
+                onMouseDown={(event) => event.preventDefault()}
+                onMouseEnter={() => {
+                  setActive(i);
+                  setEngaged(true);
+                }}
+                onClick={() => {
+                  onConnect?.(row.key);
+                  setPlusOpen(false);
+                }}
+                className="relative z-10 flex h-9 w-full items-center gap-2.5 rounded-[6px] px-2 text-left hover:bg-hover"
+              >
+                <span className="shrink-0 text-[12.5px] font-medium text-ink">
+                  {row.name}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-[12px] text-ink-3">
+                  {row.desc}
+                </span>
+              </button>
+            ))}
+            {connectionRows.length === 0 && (
+              <div className="flex h-9 items-center px-2 text-[12px] text-ink-3">
+                Add a Composio key under Connected apps first
+              </div>
+            )}
+            <button
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                onManageConnections?.();
+                setPlusOpen(false);
+              }}
+              className="mt-1 flex h-8 w-full items-center border-t border-line px-2 text-left text-[12px] font-medium text-ink-2 hover:bg-hover"
+            >
+              Manage all connections…
+            </button>
+          </div>
+        )}
+
+        {!plusOpen && menu && (
           <div
             onMouseLeave={() => setEngaged(false)}
             className="absolute inset-x-0 bottom-full z-10 mb-2 rounded-[10px] bg-surface p-1 shadow-raised"
@@ -264,7 +331,7 @@ export default function PromptBar({
             )}
             <div className="mt-1 border-t border-line px-2 pt-1.5 pb-1 text-[11px] text-ink-3">
               {menu === "at"
-                ? "Type to filter agents"
+                ? "Type to filter teammates"
                 : "Type to filter skills"}
             </div>
           </div>
@@ -350,7 +417,7 @@ export default function PromptBar({
           >
             <button
               type="button"
-              aria-label="Mention agent or skill"
+              aria-label="Connect apps"
               aria-expanded={plusOpen}
               disabled={disabled}
               onClick={() => {
@@ -358,11 +425,11 @@ export default function PromptBar({
                 setPlusOpen((c) => !c);
                 inputRef.current?.focus();
               }}
-              className={`flex size-7 shrink-0 items-center justify-center justify-self-start text-ink-3 transition-[background-color,color,transform] duration-150 hover:bg-hover hover:text-ink active:scale-[0.94] disabled:opacity-40 ${
+              className={`flex size-7 shrink-0 items-center justify-center justify-self-start border border-line text-ink transition-[background-color,color,transform] duration-150 hover:bg-hover active:scale-[0.94] disabled:opacity-40 ${
                 pill ? "rounded-full" : "rounded-[8px]"
-              } ${plusOpen ? "bg-hover text-ink" : ""} ${expanded ? "col-start-1 row-start-2" : "col-start-1 row-start-1"}`}
+              } ${plusOpen ? "bg-hover border-line-strong" : "bg-field"} ${expanded ? "col-start-1 row-start-2" : "col-start-1 row-start-1"}`}
             >
-              <Icon size={16} strokeWidth={2}>
+              <Icon size={15} strokeWidth={2.2}>
                 <path d="M12 5v14M5 12h14" />
               </Icon>
             </button>

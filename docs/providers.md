@@ -2,7 +2,7 @@
 
 Every agent uses a `provider:model` string, e.g. `openrouter:anthropic/claude-sonnet-4`.
 
-Configure keys in **Settings → Models & providers**. Keys live in `~/.sora/secrets.json` and are never returned by the API (hints only).
+Keys live encrypted in `~/.sora/secrets.json` (machine key in `.encryption-key`, or `SORA_ENCRYPTION_KEY`). The API never returns raw keys (hints only).
 
 | Provider | Kind | Notes |
 |----------|------|-------|

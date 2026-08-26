@@ -1,14 +1,9 @@
 import { useState } from "react";
 import { soraApi } from "../api";
-import {
-  isReservedTeammateName,
-  pickTeammateName,
-  ROLE_SUGGESTIONS,
-} from "../teammateNames";
+import CreateTeammateForm from "./CreateTeammateForm";
 
-type Step = "meet" | "name" | "connect" | "computer" | "teammate";
+type Step = "meet" | "name" | "keys" | "teammate";
 
-/** Top providers — paste any matching API key. */
 const AI_OPTIONS = [
   {
     id: "openrouter",
@@ -21,7 +16,7 @@ const AI_OPTIONS = [
   {
     id: "openai",
     label: "OpenAI",
-    blurb: "GPT-4o and o-series from your OpenAI account",
+    blurb: "GPT models from your OpenAI account",
     defaultModel: "openai:gpt-4o-mini",
     keyUrl: "https://platform.openai.com/api-keys",
     placeholder: "sk-…",
@@ -37,7 +32,7 @@ const AI_OPTIONS = [
   {
     id: "google",
     label: "Gemini",
-    blurb: "Gemini models from Google AI Studio",
+    blurb: "Gemini from Google AI Studio",
     defaultModel: "google:gemini-2.0-flash",
     keyUrl: "https://aistudio.google.com/apikey",
     placeholder: "AIza…",
@@ -60,20 +55,24 @@ const AI_OPTIONS = [
   },
 ] as const;
 
-const STEPS: Step[] = ["meet", "name", "connect", "computer", "teammate"];
+const STEPS: Step[] = ["meet", "name", "keys", "teammate"];
 
-export default function Onboarding({ onDone }: { onDone: () => void }) {
+export default function Onboarding({
+  onDone,
+}: {
+  onDone: (opts?: {
+    agentSlug?: string;
+    setupPrompt?: string;
+  }) => void;
+}) {
   const [step, setStep] = useState<Step>("meet");
   const [displayName, setDisplayName] = useState("");
   const [providerId, setProviderId] =
     useState<(typeof AI_OPTIONS)[number]["id"]>("openrouter");
   const [apiKey, setApiKey] = useState("");
   const [e2bKey, setE2bKey] = useState("");
-  const [teammateName, setTeammateName] = useState(() => pickTeammateName([]));
-  const [teammateRole, setTeammateRole] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [aiOk, setAiOk] = useState(false);
 
   const selected = AI_OPTIONS.find((o) => o.id === providerId)!;
   const stepIndex = STEPS.indexOf(step);
@@ -84,7 +83,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
     setError(null);
     try {
       await soraApi.setConfig({ displayName: name });
-      setStep("connect");
+      setStep("keys");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -92,44 +91,24 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
     }
   }
 
-  async function saveAiAndContinue() {
-    const key = apiKey.trim();
-    if (!key) {
-      setError("Paste your API key to continue.");
+  /** Save both keys; silently verify the model key before continuing. */
+  async function saveKeysAndContinue() {
+    const modelKey = apiKey.trim();
+    const sandboxKey = e2bKey.trim();
+    if (!modelKey) {
+      setError("Paste your AI API key to continue.");
+      return;
+    }
+    if (!sandboxKey) {
+      setError("Paste your E2B key so teammates get a computer.");
       return;
     }
     setBusy(true);
     setError(null);
     try {
-      await soraApi.setProvider(providerId, { apiKey: key });
+      await soraApi.setProvider(providerId, { apiKey: modelKey });
       await soraApi.setConfig({ defaultModel: selected.defaultModel });
-      const result = await soraApi.testProvider(selected.defaultModel);
-      if (!result.ok) {
-        setError(
-          result.error ??
-            "That key didn’t work. Check the provider matches the key.",
-        );
-        return;
-      }
-      setAiOk(true);
-      setStep("computer");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function saveComputerAndContinue() {
-    const key = e2bKey.trim();
-    if (!key) {
-      setError("Your teammates need a cloud computer (E2B key).");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      await soraApi.setProvider("e2b", { apiKey: key });
+      await soraApi.setProvider("e2b", { apiKey: sandboxKey });
       await soraApi.setConfig({
         computer: {
           provider: "e2b",
@@ -139,40 +118,19 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
           commandTimeoutMs: 120_000,
         },
       });
-      const existing = await soraApi.agents();
-      setTeammateName(pickTeammateName(existing.map((a) => a.name)));
-      setStep("teammate");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  }
 
-  async function createFirstTeammate() {
-    const name = teammateName.trim();
-    if (!name) {
-      setError("Give your teammate a name.");
-      return;
-    }
-    if (isReservedTeammateName(name)) {
-      setError("That name is reserved for the app. Pick a teammate name.");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const existing = await soraApi.agents();
-      if (existing.length === 0) {
-        const created = await soraApi.createAgent({
-          name,
-          description: teammateRole.trim() || undefined,
-        });
-        await soraApi.updateAgent(created.slug, {
-          model: selected.defaultModel,
-        });
+      const result = await soraApi.testProvider(selected.defaultModel);
+      if (!result.ok) {
+        setError(
+          result.error ??
+            "That AI key didn’t work. Check the provider matches the key.",
+        );
+        return;
       }
-      onDone();
+
+      setApiKey("");
+      setE2bKey("");
+      setStep("teammate");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -191,8 +149,10 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         )}
       </div>
 
-      <div className="flex min-h-0 flex-1 items-center justify-center px-6 pb-16">
-        <div className="w-full max-w-md">
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-6 pb-16">
+        <div
+          className={`w-full ${step === "teammate" ? "max-w-lg" : "max-w-md"}`}
+        >
           {error && (
             <p className="mb-5 rounded-control bg-red-tint px-3 py-2 text-[13px] text-red">
               {error}
@@ -206,7 +166,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
                   Your team of AI teammates
                 </p>
                 <p className="mt-3 text-[15px] leading-relaxed text-ink-2">
-                  Sora is the app. You create teammates — each with a name, a
+                  Sora is the app. You create teammates, each with a name, a
                   chat, and a computer. Bring your own model key and sandbox.
                 </p>
               </div>
@@ -249,51 +209,54 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
             </div>
           )}
 
-          {step === "connect" && (
+          {step === "keys" && (
             <div className="flex flex-col gap-5">
               <div>
                 <p className="text-[24px] font-semibold text-ink">
-                  Connect your AI
+                  Connect what you need
                 </p>
                 <p className="mt-2 text-[14.5px] leading-relaxed text-ink-2">
-                  Pick a provider and paste your API key. You pay that provider
-                  directly.
+                  Keys stay on this computer (encrypted). You pay those
+                  providers directly; nothing is billed through Sora.
                 </p>
               </div>
 
-              <div className="flex flex-wrap gap-1.5">
-                {AI_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => {
-                      setProviderId(opt.id);
-                      setAiOk(false);
-                      setError(null);
-                    }}
-                    className={`rounded-control px-2.5 py-1.5 text-[12.5px] font-medium ${
-                      providerId === opt.id
-                        ? "bg-ink text-surface"
-                        : "bg-field text-ink-2 hover:bg-hover"
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
+              <div>
+                <p className="mb-1.5 text-[13px] font-medium text-ink">
+                  AI provider
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {AI_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        setProviderId(opt.id);
+                        setError(null);
+                      }}
+                      className={`rounded-control px-2.5 py-1.5 text-[12.5px] font-medium ${
+                        providerId === opt.id
+                          ? "bg-ink text-surface"
+                          : "bg-field text-ink-2 hover:bg-hover"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-1.5 text-[12.5px] text-ink-3">{selected.blurb}</p>
               </div>
 
-              <p className="text-[12.5px] text-ink-3">{selected.blurb}</p>
-
               <label className="flex flex-col gap-1.5">
-                <span className="text-[13px] font-medium text-ink">API key</span>
+                <span className="text-[13px] font-medium text-ink">
+                  {selected.label} API key
+                </span>
                 <input
                   type="password"
                   autoComplete="off"
+                  spellCheck={false}
                   value={apiKey}
-                  onChange={(e) => {
-                    setApiKey(e.target.value);
-                    setAiOk(false);
-                  }}
+                  onChange={(e) => setApiKey(e.target.value)}
                   placeholder={selected.placeholder}
                   className="h-11 rounded-control border border-line bg-field px-3 font-mono text-[13px] text-ink outline-none focus:border-line-strong"
                 />
@@ -307,36 +270,14 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
                 </a>
               </label>
 
-              <button
-                type="button"
-                disabled={busy || !apiKey.trim()}
-                onClick={() => void saveAiAndContinue()}
-                className="self-start rounded-control bg-ink px-5 py-2.5 text-[14px] font-medium text-surface disabled:opacity-50"
-              >
-                {busy ? "Testing…" : "Continue"}
-              </button>
-            </div>
-          )}
-
-          {step === "computer" && (
-            <div className="flex flex-col gap-5">
-              <div>
-                <p className="text-[24px] font-semibold text-ink">
-                  Cloud computers
-                </p>
-                <p className="mt-2 text-[14.5px] leading-relaxed text-ink-2">
-                  Each teammate gets a sandbox — browser, files, and a desktop
-                  you can watch.
-                </p>
-              </div>
-
               <label className="flex flex-col gap-1.5">
                 <span className="text-[13px] font-medium text-ink">
-                  E2B API key
+                  E2B sandbox key
                 </span>
                 <input
                   type="password"
                   autoComplete="off"
+                  spellCheck={false}
                   value={e2bKey}
                   onChange={(e) => setE2bKey(e.target.value)}
                   placeholder="e2b_…"
@@ -348,17 +289,17 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
                   rel="noreferrer"
                   className="text-[12px] text-ink-3 underline hover:text-ink-2"
                 >
-                  Get a free sandbox key from E2B
+                  Get a free key from E2B
                 </a>
               </label>
 
               <button
                 type="button"
-                disabled={busy || !e2bKey.trim() || !aiOk}
-                onClick={() => void saveComputerAndContinue()}
+                disabled={busy || !apiKey.trim() || !e2bKey.trim()}
+                onClick={() => void saveKeysAndContinue()}
                 className="self-start rounded-control bg-ink px-5 py-2.5 text-[14px] font-medium text-surface disabled:opacity-50"
               >
-                {busy ? "Saving…" : "Continue"}
+                {busy ? "Connecting…" : "Continue"}
               </button>
             </div>
           )}
@@ -370,64 +311,22 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
                   Create your first teammate
                 </p>
                 <p className="mt-2 text-[14.5px] leading-relaxed text-ink-2">
-                  Give them a name and optional role. You can add more anytime
-                  from the sidebar.
+                  Name your teammate and paste a setup prompt. You can also
+                  search Bot Directory below to copy one in.
                 </p>
               </div>
 
-              <label className="flex flex-col gap-1.5">
-                <span className="text-[13px] font-medium text-ink">Name</span>
-                <input
-                  value={teammateName}
-                  onChange={(e) => setTeammateName(e.target.value)}
-                  placeholder="Name this teammate"
-                  autoFocus
-                  className="h-11 rounded-control border border-line bg-field px-3 text-[15px] text-ink outline-none focus:border-line-strong"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") void createFirstTeammate();
-                  }}
-                />
-              </label>
-
-              <div>
-                <p className="mb-1.5 text-[13px] font-medium text-ink">
-                  Role (optional)
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {ROLE_SUGGESTIONS.map((role) => (
-                    <button
-                      key={role.title}
-                      type="button"
-                      onClick={() => {
-                        setTeammateName(role.title);
-                        setTeammateRole(role.description);
-                      }}
-                      className={`rounded-control px-2.5 py-1.5 text-[12.5px] font-medium ${
-                        teammateRole === role.description
-                          ? "bg-ink text-surface"
-                          : "bg-field text-ink-2 hover:bg-hover"
-                      }`}
-                    >
-                      {role.title}
-                    </button>
-                  ))}
-                </div>
-                <input
-                  value={teammateRole}
-                  onChange={(e) => setTeammateRole(e.target.value)}
-                  placeholder="Short role — e.g. Keeps the inbox moving"
-                  className="mt-2 h-10 w-full rounded-control border border-line bg-field px-3 text-[13px] text-ink outline-none focus:border-line-strong"
-                />
-              </div>
-
-              <button
-                type="button"
-                disabled={busy || !teammateName.trim()}
-                onClick={() => void createFirstTeammate()}
-                className="self-start rounded-control bg-ink px-5 py-2.5 text-[14px] font-medium text-surface disabled:opacity-50"
-              >
-                {busy ? "Creating…" : "Meet your teammate"}
-              </button>
+              <CreateTeammateForm
+                defaultModel={selected.defaultModel}
+                compact
+                onReady={async (agent, meta) => {
+                  onDone({
+                    agentSlug: agent.slug,
+                    setupPrompt: meta.setupPrompt,
+                  });
+                }}
+                onError={setError}
+              />
             </div>
           )}
         </div>

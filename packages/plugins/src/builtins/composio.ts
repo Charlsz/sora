@@ -207,11 +207,20 @@ export const composioPlugin: SoraPlugin = {
   id: "composio",
   name: "Composio",
   description:
-    "Link Gmail, Slack, GitHub, Notion, Linear, and 1000+ apps via managed OAuth (used by Grok Build).",
+    "Sign into Gmail, Slack, X, GitHub, and other apps once. Teammates use those connections without seeing your passwords.",
   kind: "connector",
-  apps: ["gmail", "slack", "github", "notion", "linear", "googlecalendar", "outlook"],
+  apps: [
+    "gmail",
+    "slack",
+    "twitter",
+    "github",
+    "notion",
+    "linear",
+    "googlecalendar",
+    "outlook",
+  ],
   privacy:
-    "Your Composio project API key stays in ~/.sora/secrets.json. App OAuth tokens are stored by Composio (SOC2/ISO). Sora never receives those tokens.",
+    "You paste a Composio project key once (stored encrypted on this computer). When you link an app, your browser opens that app’s normal login. App tokens stay with Composio — Sora never stores those passwords.",
 
   status(secrets): PluginStatus {
     const cred = hasCredential(secrets, "composio", [

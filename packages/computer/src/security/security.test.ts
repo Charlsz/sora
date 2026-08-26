@@ -9,6 +9,7 @@ import {
   FakeSandboxSession,
   isForbiddenEnvKey,
   scrubSecretsFromText,
+  scrubSensitivePatterns,
   SandboxComputer,
 } from "../index.ts";
 
@@ -39,6 +40,15 @@ describe("security env", () => {
       ["sk-abc123456789"],
     );
     expect(out).not.toContain("sk-abc123456789");
+    expect(out).toContain("[REDACTED]");
+  });
+
+  test("scrubs sensitive patterns without known list", () => {
+    const out = scrubSensitivePatterns(
+      "password=hunter2secret and sk-ant-abcdefghijklmnopqrstuvwxyz",
+    );
+    expect(out).not.toContain("hunter2secret");
+    expect(out).not.toContain("sk-ant-abcdefghijklmnopqrstuvwxyz");
     expect(out).toContain("[REDACTED]");
   });
 });

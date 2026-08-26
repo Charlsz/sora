@@ -1,10 +1,24 @@
 # Agents and chat
 
-## Agents
+## Agents (teammates)
 
-Each agent has: name/slug, instructions, model, tools, skills, workspace folder, optional browser profile.
+Each teammate has: name/slug, instructions, model, tools, skills, workspace folder, optional browser profile.
 
-Create via UI **Agents** or `sora agent create`.
+Create via UI **Agents**, onboarding, or `sora agent create`.
+
+## From Bot Directory or a pasted prompt
+
+Listings and custom prompts are **setup prompts**, not finished system prompts:
+
+1. **Teammates** (or onboarding): paste a prompt, or search Bot Directory — one screen.
+2. Sora creates a teammate shell and sends the prompt as the **first chat message**.
+3. The teammate asks for niche/voice/boundaries, helps connect apps, runs a supervised first pass.
+4. Optional: save a **Routine** after you approve the shape of the work.
+
+API: `POST /api/botdirectory/import` → `{ agent, setupPrompt, bot }`.
+
+Do **not** paste passwords into chat. Connect apps under **Connected apps** (Composio), store extras under **Private secrets**, or **Take control** on the computer and type logins yourself.
+
 
 ## Chat UX
 

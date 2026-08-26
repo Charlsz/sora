@@ -39,7 +39,7 @@ async function copyText(text: string): Promise<boolean> {
 }
 
 function formatRun(run: WorkflowRun): { label: string; meta: string } {
-  const when = run.startedAt?.slice(0, 19).replace("T", " ") ?? "—";
+  const when = run.startedAt?.slice(0, 19).replace("T", " ") ?? "–";
   const detail =
     run.status === "failed"
       ? (run.error ?? "failed").slice(0, 48)

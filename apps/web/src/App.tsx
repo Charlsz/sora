@@ -19,7 +19,6 @@ import RoutinesPanel from "./components/RoutinesPanel";
 import SidebarNav from "./components/SidebarNav";
 import StreamingText from "./components/StreamingText";
 import type { ToolRow } from "./components/ToolChips";
-import { pickTeammateName } from "./teammateNames";
 
 type WorkerStatus = "idle" | "working" | "needs_you" | "done" | "failed";
 
@@ -79,6 +78,9 @@ export function App() {
   const [saveRoutineBusy, setSaveRoutineBusy] = useState(false);
   const [computerOpen, setComputerOpen] = useState(true);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [connectApps, setConnectApps] = useState<
+    Array<{ key: string; name: string; desc: string }>
+  >([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const headerMenuRef = useRef<HTMLDivElement>(null);
 
@@ -117,6 +119,30 @@ export function App() {
       );
     }
     setSelected((prev) => prev ?? a[0]?.slug ?? null);
+    try {
+      const plug = await soraApi.plugins();
+      const composio = plug.plugins.find((p) => p.id === "composio");
+      const apps = (composio?.apps?.length
+        ? composio.apps
+        : [
+            "gmail",
+            "googlecalendar",
+            "slack",
+            "twitter",
+            "github",
+            "notion",
+          ]
+      ).map((app) => ({
+        key: app,
+        name: app === "twitter" ? "X" : app === "googlecalendar" ? "Google Calendar" : app.charAt(0).toUpperCase() + app.slice(1),
+        desc: composio?.configured
+          ? "Link via browser login"
+          : "Needs Composio key first",
+      }));
+      setConnectApps(apps);
+    } catch {
+      setConnectApps([]);
+    }
   }
 
   useEffect(() => {
@@ -319,7 +345,7 @@ export function App() {
     .find((e): e is Extract<LiveEntry, { kind: "user" }> => e.kind === "user");
   const latestUserTask = latestUser?.content ?? chatTitle;
 
-  /** Teammates roster only — name + what they’re doing now. */
+  /** Teammates roster only: name + what they’re doing now. */
   const sidebarTeammates = useMemo(() => {
     return agents.map((a) => {
       const isActive = a.slug === selected;
@@ -382,11 +408,15 @@ export function App() {
     }
   }
 
-  async function send(text: string) {
-    if (!active || busy) return;
+  async function runWithTeammate(
+    slug: string,
+    text: string,
+    opts?: { conversationId?: string | null; resetChat?: boolean },
+  ) {
+    if (busy) return;
     const { prompt, skill } = parseSkillFromPrompt(text);
     const mention = /@([\w-]+)/.exec(prompt);
-    let slug = active.slug;
+    let target = slug;
     let clean = prompt;
     if (mention) {
       const named = agents.find(
@@ -395,26 +425,33 @@ export function App() {
           a.name.toLowerCase() === mention[1]!.toLowerCase(),
       );
       if (named) {
-        slug = named.slug;
-        setSelected(slug);
+        target = named.slug;
         clean = prompt.replace(mention[0], "").trim() || prompt;
       }
     }
 
+    setSelected(target);
     setError(null);
     setBusy(true);
     setChatTitle(clean.slice(0, 48) || "New chat");
-    setLive((prev) => [
-      ...prev,
-      { kind: "user", id: crypto.randomUUID(), content: clean },
-    ]);
     setNav("chats");
+    if (opts?.resetChat) {
+      setConversationId(null);
+      setLive([{ kind: "user", id: crypto.randomUUID(), content: clean }]);
+    } else {
+      setLive((prev) => [
+        ...prev,
+        { kind: "user", id: crypto.randomUUID(), content: clean },
+      ]);
+    }
 
     try {
-      const result = await soraApi.runAgent(slug, {
+      const result = await soraApi.runAgent(target, {
         prompt: clean,
         skill,
-        conversationId: conversationId ?? undefined,
+        conversationId: opts?.resetChat
+          ? undefined
+          : (opts?.conversationId ?? conversationId ?? undefined),
       });
       setConversationId(result.conversationId);
       setLive((prev) => {
@@ -449,6 +486,19 @@ export function App() {
     }
   }
 
+  async function send(text: string) {
+    if (!active || busy) return;
+    await runWithTeammate(active.slug, text);
+  }
+
+  /** Bot Directory: create shell → open chat → send listing setup prompt. */
+  async function setupFromDirectory(agent: Agent, setupPrompt: string) {
+    await refresh();
+    setSelected(agent.slug);
+    setNav("chats");
+    await runWithTeammate(agent.slug, setupPrompt, { resetChat: true });
+  }
+
   async function respondPermission(
     requestId: string,
     decision: "allow" | "deny",
@@ -456,6 +506,14 @@ export function App() {
   ) {
     await soraApi.respondPermission(requestId, decision, options);
     setPending((prev) => prev.filter((p) => p.requestId !== requestId));
+  }
+
+  if (apiOk === null) {
+    return (
+      <div className="flex h-full items-center justify-center bg-panel px-6">
+        <p className="text-[14px] text-ink-2">Starting Sora…</p>
+      </div>
+    );
   }
 
   if (apiOk === false) {
@@ -475,9 +533,19 @@ export function App() {
   if (showOnboarding) {
     return (
       <Onboarding
-        onDone={() => {
+        onDone={(opts) => {
           setOnboardingDone(true);
-          void refresh().then(() => setNav("chats"));
+          void refresh().then(async () => {
+            setNav("chats");
+            if (opts?.agentSlug && opts.setupPrompt) {
+              setSelected(opts.agentSlug);
+              await runWithTeammate(opts.agentSlug, opts.setupPrompt, {
+                resetChat: true,
+              });
+            } else if (opts?.agentSlug) {
+              setSelected(opts.agentSlug);
+            }
+          });
         }}
       />
     );
@@ -510,8 +578,8 @@ export function App() {
     <div className="flex h-full min-h-0">
       <SidebarNav
         fill
-        brand="Sora"
-        monogram="S"
+        brand={undefined}
+        monogram={undefined}
         displayName={displayName}
         activeId={nav === "chats" ? activeListId : null}
         activeNav={nav}
@@ -526,24 +594,7 @@ export function App() {
         ]}
         footerLabel="Settings"
         onFooterClick={() => setNav("settings")}
-        onNewTeammate={() => {
-          void (async () => {
-            try {
-              const created = await soraApi.createAgent({
-                name: pickTeammateName(agents.map((a) => a.name)),
-              });
-              await refresh();
-              setSelected(created.slug);
-              setNav("chats");
-              setChatTitle(created.name);
-              setLive([]);
-              setConversationId(null);
-            } catch (err) {
-              setError(err instanceof Error ? err.message : String(err));
-              setNav("agents");
-            }
-          })();
-        }}
+        onNewTeammate={() => setNav("agents")}
         onPick={(id, label) => {
           if (id.startsWith("agent:")) {
             setSelected(id.slice(6));
@@ -703,7 +754,12 @@ export function App() {
           {nav === "settings" ? (
             <ProviderSettings onChanged={() => void refresh()} />
           ) : nav === "plugins" ? (
-            <PluginsPanel onChanged={() => void refresh()} />
+            <PluginsPanel
+              onChanged={() => void refresh()}
+              onSetupFromDirectory={(agent, setupPrompt) =>
+                void setupFromDirectory(agent, setupPrompt)
+              }
+            />
           ) : nav === "routines" ? (
             <RoutinesPanel
               agents={agents}
@@ -721,6 +777,9 @@ export function App() {
               }}
               onChanged={() => void refresh()}
               onError={(message) => setError(message)}
+              onSetupFromDirectory={(agent, setupPrompt) =>
+                void setupFromDirectory(agent, setupPrompt)
+              }
             />
           ) : (
             <div className="mx-auto flex w-full max-w-xl flex-col gap-5">
@@ -730,8 +789,8 @@ export function App() {
                     {active ? `Message ${active.name}` : "Pick a teammate"}
                   </p>
                   <p className="mt-2 max-w-sm text-[13.5px] leading-relaxed text-ink-2">
-                    Assign real work. They use their computer — tools, browser,
-                    files — and come back when they need you.
+                    Assign real work. They use their computer: tools, browser,
+                    files. They come back when they need you.
                   </p>
                 </div>
               )}
@@ -825,7 +884,7 @@ export function App() {
             <PromptBar
               disabled={busy || !active}
               placeholder={
-                active ? `+ Message ${active.name}` : "Pick a teammate first"
+                active ? `Message ${active.name}` : "Pick a teammate first"
               }
               agents={agents.map((a) => ({
                 key: a.slug,
@@ -837,8 +896,34 @@ export function App() {
                 name: `/${s.name}`,
                 desc: s.description,
               }))}
+              connections={connectApps}
               models={[]}
               onSend={(text) => void send(text)}
+              onManageConnections={() => setNav("plugins")}
+              onConnect={(app) => {
+                void (async () => {
+                  try {
+                    const result = await soraApi.connectPlugin("composio", app);
+                    if (result.redirectUrl) {
+                      const { openExternalUrl } = await import("./openExternal");
+                      await openExternalUrl(result.redirectUrl);
+                    } else if (!result.ok) {
+                      setError(
+                        result.message ||
+                          "Add a Composio key under Connected apps first.",
+                      );
+                      setNav("plugins");
+                    } else {
+                      setError(null);
+                    }
+                  } catch (err) {
+                    setError(
+                      err instanceof Error ? err.message : String(err),
+                    );
+                    setNav("plugins");
+                  }
+                })();
+              }}
             />
           </div>
         )}

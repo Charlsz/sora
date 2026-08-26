@@ -1,5 +1,5 @@
 /**
- * Friendly teammate names — short contact-style labels, never the product brand.
+ * Friendly teammate names: short contact-style labels, never the product brand.
  */
 const NAMES = [
   "Scout",

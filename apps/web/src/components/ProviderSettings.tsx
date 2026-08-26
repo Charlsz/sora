@@ -120,7 +120,7 @@ export default function ProviderSettings({
         <div>
           <h2 className="text-[15px] font-semibold text-ink">Connections</h2>
           <p className="mt-0.5 text-[12.5px] text-ink-3">
-            Your AI and sandbox keys — Sora never charges you. Keys stay on this
+            Your AI and sandbox keys. Sora never charges you. Keys stay on this
             device.
           </p>
         </div>

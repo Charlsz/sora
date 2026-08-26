@@ -42,6 +42,7 @@ export {
   collectSecretValues,
   isForbiddenEnvKey,
   scrubSecretsFromText,
+  scrubSensitivePatterns,
 } from "./security/index.ts";
 export { LocalTerminal, assertCommandWorkspaceSafe } from "./terminal.ts";
 export type {

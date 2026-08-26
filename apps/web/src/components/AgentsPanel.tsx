@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { soraApi, type Agent } from "../api";
-import { isReservedTeammateName, pickTeammateName } from "../teammateNames";
+import CreateTeammateForm from "./CreateTeammateForm";
+import { isReservedTeammateName } from "../teammateNames";
 
 export default function AgentsPanel({
   agents,
@@ -8,46 +9,25 @@ export default function AgentsPanel({
   onSelect,
   onChanged,
   onError,
+  onSetupFromDirectory,
 }: {
   agents: Agent[];
   defaultModel: string;
   onSelect: (slug: string) => void;
   onChanged: () => void;
   onError: (message: string) => void;
+  /** Open chat and run the setup prompt as the first message. */
+  onSetupFromDirectory?: (
+    agent: Agent,
+    setupPrompt: string,
+  ) => void | Promise<void>;
 }) {
-  const [name, setName] = useState(() =>
-    pickTeammateName(agents.map((a) => a.name)),
-  );
-  const [description, setDescription] = useState("");
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editInstructions, setEditInstructions] = useState("");
   const [editModel, setEditModel] = useState("");
-
-  async function create() {
-    const trimmed = name.trim();
-    if (trimmed && isReservedTeammateName(trimmed)) {
-      onError("That name is reserved for the app. Pick a teammate name.");
-      return;
-    }
-    setBusy(true);
-    try {
-      const agent = await soraApi.createAgent({
-        name: trimmed || undefined,
-        description: description.trim() || undefined,
-      });
-      setName(pickTeammateName([...agents.map((a) => a.name), agent.name]));
-      setDescription("");
-      onChanged();
-      onSelect(agent.slug);
-    } catch (err) {
-      onError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  }
 
   function startEdit(agent: Agent) {
     setEditing(agent.slug);
@@ -100,35 +80,25 @@ export default function AgentsPanel({
       <div>
         <h2 className="text-[15px] font-semibold text-ink">Teammates</h2>
         <p className="mt-0.5 text-[12.5px] text-ink-3">
-          Each teammate has a chat, a computer, and a model. Default model:{" "}
+          Each teammate has a chat, a computer, and a model. Default:{" "}
           {defaultModel}
         </p>
       </div>
 
       <section className="rounded-card bg-surface px-4 py-3 shadow-card">
-        <h3 className="text-[13px] font-medium text-ink">New teammate</h3>
-        <div className="mt-3 flex flex-col gap-2">
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Name (e.g. Scout, Inbox)"
-            className="h-9 rounded-control border border-line bg-field px-3 text-[13px] text-ink outline-none focus:border-line-strong"
-          />
-          <input
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Role — e.g. Keeps the inbox moving"
-            className="h-9 rounded-control border border-line bg-field px-3 text-[13px] text-ink outline-none focus:border-line-strong"
-          />
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void create()}
-            className="self-start rounded-control bg-ink px-3 py-1.5 text-[12.5px] font-medium text-surface disabled:opacity-50"
-          >
-            {busy ? "Creating…" : "Create teammate"}
-          </button>
-        </div>
+        <CreateTeammateForm
+          existingNames={agents.map((a) => a.name)}
+          compact
+          onReady={async (agent, meta) => {
+            onChanged();
+            if (onSetupFromDirectory) {
+              await onSetupFromDirectory(agent, meta.setupPrompt);
+            } else {
+              onSelect(agent.slug);
+            }
+          }}
+          onError={onError}
+        />
       </section>
 
       <ul className="flex flex-col gap-2">

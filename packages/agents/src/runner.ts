@@ -1,7 +1,9 @@
 import type { EventBus, SoraPaths, SoraRuntime } from "@sora/core";
 import {
   ComputerRegistry,
+  collectSecretValues,
   createAgentComputer,
+  scrubSecretsFromText,
   type Computer,
 } from "@sora/computer";
 import type { ConversationStore, MemoryStore } from "@sora/memory";
@@ -253,28 +255,36 @@ export class AgentRunner {
               call.arguments,
               activeSkill,
             );
+            const secretValues = collectSecretValues(this.runtime.secrets);
+            const scrubbed = {
+              ...result,
+              output: scrubSecretsFromText(result.output ?? "", secretValues),
+              error: result.error
+                ? scrubSecretsFromText(result.error, secretValues)
+                : result.error,
+            };
             toolCallLog.push({
               name: call.name,
-              ok: result.ok,
-              output: result.output,
+              ok: scrubbed.ok,
+              output: scrubbed.output,
             });
 
             await this.events.emit(
-              result.ok ? "agent.tool.completed" : "agent.tool.failed",
+              scrubbed.ok ? "agent.tool.completed" : "agent.tool.failed",
               {
                 agentId: agent.id,
                 tool: call.name,
-                ok: result.ok,
-                output: result.output,
-                error: result.error,
+                ok: scrubbed.ok,
+                output: scrubbed.output,
+                error: scrubbed.error,
                 skill: activeSkill?.skill.id,
               },
               "agents",
             );
 
-            const toolContent = result.ok
-              ? result.output
-              : `Error: ${result.error ?? "tool failed"}`;
+            const toolContent = scrubbed.ok
+              ? scrubbed.output
+              : `Error: ${scrubbed.error ?? "tool failed"}`;
 
             messages.push({
               role: "tool",
@@ -418,21 +428,57 @@ export class AgentRunner {
     inbox: string[] = [],
   ): string {
     const workspace = this.paths.agent(agent.slug).workspace;
+    const peers = this.agents
+      .list()
+      .filter((a) => a.id !== agent.id)
+      .map((a) => `${a.name} (${a.slug})${a.description ? `: ${a.description}` : ""}`);
     const parts = [
       agent.instructions,
-      `Agent slug: ${agent.slug}`,
-      `Workspace: ${workspace}`,
+      `Teammate slug: ${agent.slug}`,
+      `Computer files root: ${workspace}`,
       `Capabilities: ${agent.capabilities.join(", ") || "general"}`,
-      "Filesystem tools are confined to your workspace.",
-      "Terminal commands run with workspace cwd and best-effort path guards; do not attempt to escape the workspace.",
+      [
+        "You can use the internet and your computer.",
+        "http_request: fetch URLs and APIs.",
+        "browser_*: control a real browser on your computer (navigate, click, type, screenshot).",
+        "terminal / filesystem tools: work inside your computer files.",
+        "Do not claim you lack internet or a browser when these tools are available.",
+      ].join(" "),
+      peers.length
+        ? [
+            "Your teammates (each has their own chat, memory, and computer):",
+            ...peers.map((p) => `- ${p}`),
+            "Use delegate_task to hand off work, or agent_message to talk to them.",
+          ].join("\n")
+        : "You are currently the only teammate. The user can add more from the sidebar.",
     ];
+    if (this.tools.list().some((t) => t.name.startsWith("composio_"))) {
+      parts.push(
+        [
+          "Connected apps (Composio): use composio_list_connections then composio_execute",
+          "for Gmail, Slack, calendars, X, and other linked services.",
+          "Never treat those apps as teammates — do not use delegate_task to “connect Gmail” or similar.",
+          "If an app is not linked yet, tell the user to tap + in the message bar (or Connected apps) and finish browser login.",
+          "Never ask the user to paste app passwords into chat.",
+        ].join(" "),
+      );
+    }
+    if (/being set up|setup prompt/i.test(agent.instructions)) {
+      parts.push(
+        [
+          "You are mid-setup. Stay in this chat.",
+          "Do not call delegate_task.",
+          "Ask the prompt’s questions, guide Composio connections, then a supervised analysis-only first run.",
+        ].join(" "),
+      );
+    }
     if (this.tools.list().some((t) => t.name.startsWith("botdirectory_"))) {
       parts.push(
         [
-          "Bot Directory (https://botdirectory.ai/api/): you can search, sync, and publish curated bot prompts.",
-          "When helping the user, mention curated bot drops on botdirectory.ai.",
-          "Only call botdirectory_subscribe_newsletter with an email the user already gave you — never invent one.",
-          "Prefer botdirectory_search / botdirectory_get before inventing a new bot setup from scratch.",
+          "Bot Directory (botdirectory.ai) is an optional catalog of teammate templates.",
+          "Use botdirectory_search only when the user asks for templates or curated prompts,",
+          "not as a substitute for internet research or real work.",
+          "Never invent an email for botdirectory_subscribe_newsletter.",
         ].join(" "),
       );
     }
@@ -443,9 +489,20 @@ export class AgentRunner {
       parts.push("Relevant memory:\n- " + memories.join("\n- "));
     }
     if (inbox.length) {
-      parts.push("Inbox from other agents:\n- " + inbox.join("\n- "));
+      parts.push("Inbox from other teammates:\n- " + inbox.join("\n- "));
     }
     return parts.join("\n\n");
+  }
+
+  #isAlwaysAvailableTool(name: string): boolean {
+    return (
+      name.startsWith("botdirectory_") ||
+      name.startsWith("composio_") ||
+      name.startsWith("browser_") ||
+      name === "http_request" ||
+      name === "agent_message" ||
+      name === "delegate_task"
+    );
   }
 
   #toolDefinitions(
@@ -458,23 +515,22 @@ export class AgentRunner {
     if (!skill && agent.tools.some((t) => t.name === "invoke_skill")) {
       allowed.add("invoke_skill");
     }
-    // Public catalog tools — available to every agent (botdirectory contract).
     for (const tool of this.tools.list()) {
-      if (tool.name.startsWith("botdirectory_")) allowed.add(tool.name);
+      if (this.#isAlwaysAvailableTool(tool.name)) allowed.add(tool.name);
     }
 
     const defs: ChatToolDefinition[] = [];
     for (const name of allowed) {
       if (!this.tools.has(name)) continue;
+      const onAgent = agent.tools.some((t) => t.name === name);
+      if (!onAgent && !this.#isAlwaysAvailableTool(name)) continue;
       if (
-        !name.startsWith("botdirectory_") &&
-        !agent.tools.some((t) => t.name === name)
+        skill &&
+        name !== "invoke_skill" &&
+        !skill.allowedTools.includes(name) &&
+        !this.#isAlwaysAvailableTool(name)
       ) {
         continue;
-      }
-      if (skill && name !== "invoke_skill" && !skill.allowedTools.includes(name)) {
-        // Still allow botdirectory during skills (read-only catalog help)
-        if (!name.startsWith("botdirectory_")) continue;
       }
       const tool = this.tools.get(name);
       defs.push({
@@ -493,8 +549,7 @@ export class AgentRunner {
     skill: SkillInvocation | null,
   ) {
     const agentAllowed = new Set(agent.tools.map((t) => t.name));
-    const directoryOk = name.startsWith("botdirectory_");
-    if (!agentAllowed.has(name) && !directoryOk) {
+    if (!agentAllowed.has(name) && !this.#isAlwaysAvailableTool(name)) {
       return {
         ok: false,
         output: "",
@@ -506,7 +561,7 @@ export class AgentRunner {
       skill &&
       name !== "invoke_skill" &&
       !skill.allowedTools.includes(name) &&
-      !directoryOk
+      !this.#isAlwaysAvailableTool(name)
     ) {
       return {
         ok: false,
@@ -523,6 +578,18 @@ export class AgentRunner {
         ok: false,
         output: "",
         error: `Tool "${name}" is not registered`,
+      };
+    }
+
+    if (
+      name === "delegate_task" &&
+      /being set up|setup prompt/i.test(agent.instructions)
+    ) {
+      return {
+        ok: false,
+        output: "",
+        error:
+          "Setup mode: do not use delegate_task. Ask the user in this chat, and tell them to link apps via + / Connected apps (Composio).",
       };
     }
 

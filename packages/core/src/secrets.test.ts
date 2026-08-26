@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -32,7 +32,7 @@ describe("secrets encryption", () => {
     expect(back.providers.openai?.apiKey).toBe("sk-test-secret");
   });
 
-  test("saveSecrets encrypts when SORA_ENCRYPTION_KEY is set", () => {
+  test("saveSecrets encrypts with SORA_ENCRYPTION_KEY", () => {
     process.env.SORA_ENCRYPTION_KEY = "unit-test-key";
     const dir = mkdtempSync(join(tmpdir(), "sora-sec-"));
     dirs.push(dir);
@@ -46,6 +46,38 @@ describe("secrets encryption", () => {
     expect(raw.version).toBe(2);
     const loaded = loadSecrets(path);
     expect(loaded.providers.openrouter?.apiKey).toBe("or-secret");
+  });
+
+  test("saveSecrets encrypts with machine key by default", () => {
+    delete process.env.SORA_ENCRYPTION_KEY;
+    const dir = mkdtempSync(join(tmpdir(), "sora-sec-"));
+    dirs.push(dir);
+    const path = join(dir, "secrets.json");
+    saveSecrets(path, {
+      version: 1,
+      providers: { openrouter: { apiKey: "or-machine-secret" } },
+      vault: [
+        {
+          id: "1",
+          label: "email",
+          value: "user@example.com",
+          kind: "email",
+          updatedAt: new Date().toISOString(),
+        },
+      ],
+      updatedAt: new Date().toISOString(),
+    });
+    const raw = JSON.parse(readFileSync(path, "utf8")) as {
+      version: number;
+      ciphertext?: string;
+    };
+    expect(raw.version).toBe(2);
+    expect(raw.ciphertext).toBeTruthy();
+    expect(existsSync(join(dir, ".encryption-key"))).toBe(true);
+    expect(readFileSync(path, "utf8")).not.toContain("or-machine-secret");
+    const loaded = loadSecrets(path);
+    expect(loaded.providers.openrouter?.apiKey).toBe("or-machine-secret");
+    expect(loaded.vault?.[0]?.value).toBe("user@example.com");
   });
 
   test("plaintext secrets still load without key", () => {

@@ -42,7 +42,10 @@ export {
   encryptionKeyFromEnv,
   loadSecrets,
   maskSecret,
+  publicVaultEntries,
+  resolveEncryptionPassphrase,
   saveSecrets,
   type ProviderCredential,
   type SoraSecrets,
+  type VaultEntry,
 } from "./secrets.ts";

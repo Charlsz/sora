@@ -81,13 +81,23 @@ export function buildSafeProcessEnv(
 
 /** Collect secret strings to redact from tool output (never log raw keys). */
 export function collectSecretValues(
-  secrets?: { providers?: Record<string, { apiKey?: string }> },
+  secrets?: {
+    providers?: Record<string, { apiKey?: string }>;
+    vault?: Array<{ value?: string }>;
+  },
 ): string[] {
   const values: string[] = [];
-  if (!secrets?.providers) return values;
-  for (const cred of Object.values(secrets.providers)) {
-    const key = cred.apiKey?.trim();
-    if (key && key.length >= 8) values.push(key);
+  if (!secrets?.providers) {
+    /* continue to env */
+  } else {
+    for (const cred of Object.values(secrets.providers)) {
+      const key = cred.apiKey?.trim();
+      if (key && key.length >= 8) values.push(key);
+    }
+  }
+  for (const entry of secrets?.vault ?? []) {
+    const v = entry.value?.trim();
+    if (v && v.length >= 8) values.push(v);
   }
   for (const [name, value] of Object.entries(process.env)) {
     if (!value || value.length < 8) continue;
@@ -107,6 +117,36 @@ export function scrubSecretsFromText(
   for (const secret of sorted) {
     if (secret.length < 8) continue;
     out = out.split(secret).join("[REDACTED]");
+  }
+  return scrubSensitivePatterns(out);
+}
+
+/**
+ * Best-effort redaction of common secret shapes that were typed into chat
+ * or echoed by tools (API keys, password=… assignments).
+ */
+export function scrubSensitivePatterns(text: string): string {
+  if (!text) return text;
+  let out = text;
+  const patterns: RegExp[] = [
+    /\b(sk-[a-zA-Z0-9_-]{16,})\b/g,
+    /\b(sk-or-[a-zA-Z0-9_-]{16,})\b/g,
+    /\b(sk-ant-[a-zA-Z0-9_-]{16,})\b/g,
+    /\b(xai-[a-zA-Z0-9_-]{16,})\b/g,
+    /\b(gsk_[a-zA-Z0-9_-]{16,})\b/g,
+    /\b(e2b_[a-zA-Z0-9_-]{16,})\b/g,
+    /\b(ghp_[a-zA-Z0-9_]{20,})\b/g,
+    /\b(AIza[0-9A-Za-z_-]{20,})\b/g,
+    /\b(ak_[a-zA-Z0-9_-]{16,})\b/g,
+    /((?:password|passwd|pwd|secret|token|api[_-]?key)\s*[=:]\s*)([^\s"'<>]{6,})/gi,
+  ];
+  for (const re of patterns) {
+    out = out.replace(re, (match, g1, g2) => {
+      if (typeof g2 === "string" && typeof g1 === "string") {
+        return `${g1}[REDACTED]`;
+      }
+      return "[REDACTED]";
+    });
   }
   return out;
 }
