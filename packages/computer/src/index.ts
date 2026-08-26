@@ -18,8 +18,23 @@ export {
 export {
   SandboxComputer,
   createAgentComputer,
+  resolveE2bApiKey,
 } from "./cloud/sandbox-computer.ts";
-export { E2bTerminal, resolveE2bApiKey } from "./cloud/e2b-terminal.ts";
+export { E2bSandboxProvider, E2bSandboxSession } from "./cloud/e2b-provider.ts";
+export { FakeSandboxProvider, FakeSandboxSession } from "./cloud/fake-provider.ts";
+export type {
+  SandboxCapabilities,
+  SandboxCreateOptions,
+  SandboxProvider,
+  SandboxSession,
+  SandboxSessionInfo,
+} from "./cloud/types.ts";
+export {
+  buildSafeProcessEnv,
+  collectSecretValues,
+  isForbiddenEnvKey,
+  scrubSecretsFromText,
+} from "./security/index.ts";
 export { LocalTerminal, assertCommandWorkspaceSafe } from "./terminal.ts";
 export type {
   Browser,
