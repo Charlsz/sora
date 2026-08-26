@@ -104,13 +104,13 @@ Connect a model in **Settings** (e.g. `openai:gpt-4o-mini`) or set `OPENAI_API_K
 
 ## Desktop builds
 
-Production installers (Windows NSIS/MSI, macOS app/dmg, Linux deb/AppImage):
+Production installers (Windows NSIS/MSI, macOS app/dmg):
 
 ```bash
 bun run desktop:build
 ```
 
-CI builds Windows, macOS, and Linux on push and pull requests. Tag `v*` to draft a GitHub release. macOS notarization is optional via `APPLE_*` repository secrets.
+CI builds Windows and macOS on push and pull requests. Tag `v*` to draft a GitHub release. macOS notarization is optional via `APPLE_*` repository secrets. Linux desktop installers are deferred until Win/Mac are solid; for always-on on a Linux VPS use the CLI (see [docs/always-on.md](docs/always-on.md)).
 
 ## Common tasks
 
