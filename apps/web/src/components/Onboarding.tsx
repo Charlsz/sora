@@ -47,6 +47,20 @@ export default function Onboarding({
             ? model.trim()
             : `${providerId}:${model.trim()}`;
       await soraApi.setConfig({ defaultModel: ref });
+      const slug = (name.trim() || "klaus")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
+      if (slug) {
+        await soraApi.updateAgent(slug, { model: ref });
+      }
+      if (providerId !== "mock" && apiKey.trim()) {
+        const test = await soraApi.testProvider(ref);
+        if (!test.ok) {
+          setError(test.error ?? "Model test failed — check the key and try again");
+          return;
+        }
+      }
       setStep("plugins");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

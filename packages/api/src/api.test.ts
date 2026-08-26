@@ -195,4 +195,41 @@ describe("api providers", () => {
     expect(typeof body.playwrightInstalled).toBe("boolean");
     expect(typeof body.message).toBe("string");
   });
+
+  test("workflow enable pause and delete", async () => {
+    const agentRes = await fetch(`${server.url}/api/agents`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "RoutineBot" }),
+    });
+    expect(agentRes.ok).toBe(true);
+    const agent = (await agentRes.json()) as { slug: string };
+
+    const created = await fetch(`${server.url}/api/workflows`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "pause-me",
+        agent: agent.slug,
+        task: "say hi",
+      }),
+    });
+    expect(created.ok).toBe(true);
+    const wf = (await created.json()) as { slug: string; enabled: boolean };
+    expect(wf.enabled).toBe(true);
+
+    const paused = await fetch(`${server.url}/api/workflows/${wf.slug}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ enabled: false }),
+    });
+    expect(paused.ok).toBe(true);
+    const pausedBody = (await paused.json()) as { enabled: boolean };
+    expect(pausedBody.enabled).toBe(false);
+
+    const deleted = await fetch(`${server.url}/api/workflows/${wf.slug}`, {
+      method: "DELETE",
+    });
+    expect(deleted.ok).toBe(true);
+  });
 });

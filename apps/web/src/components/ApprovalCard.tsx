@@ -3,10 +3,13 @@ import type { PendingPermission } from "../api";
 
 type ApprovalCardProps = {
   request: PendingPermission;
-  onRespond: (decision: "allow" | "deny") => void | Promise<void>;
+  onRespond: (
+    decision: "allow" | "deny",
+    options?: { rememberSession?: boolean },
+  ) => void | Promise<void>;
 };
 
-    const ACTION_LABELS: Record<string, string> = {
+const ACTION_LABELS: Record<string, string> = {
   "fs.write": "Write file",
   "fs.delete": "Delete file",
   "terminal.exec": "Run terminal command",
@@ -23,11 +26,14 @@ export default function ApprovalCard({ request, onRespond }: ApprovalCardProps) 
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState<"allow" | "deny" | null>(null);
 
-  const respond = async (decision: "allow" | "deny") => {
+  const respond = async (
+    decision: "allow" | "deny",
+    options?: { rememberSession?: boolean },
+  ) => {
     if (busy || sent) return;
     setBusy(true);
     try {
-      await onRespond(decision);
+      await onRespond(decision, options);
       setSent(decision);
     } finally {
       setBusy(false);
@@ -116,7 +122,7 @@ export default function ApprovalCard({ request, onRespond }: ApprovalCardProps) 
           </p>
         </div>
 
-        <div className="primitive-card-footer flex items-center justify-end gap-2">
+        <div className="primitive-card-footer flex flex-wrap items-center justify-end gap-2">
           <button
             type="button"
             disabled={busy}
@@ -129,9 +135,17 @@ export default function ApprovalCard({ request, onRespond }: ApprovalCardProps) 
             type="button"
             disabled={busy}
             onClick={() => void respond("allow")}
+            className="rounded-control bg-field px-3 py-1.5 text-[12.5px] font-medium text-ink-2 hover:bg-hover disabled:opacity-50"
+          >
+            Allow once
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void respond("allow", { rememberSession: true })}
             className="rounded-control bg-ink px-3 py-1.5 text-[12.5px] font-medium text-surface transition-[transform,opacity] duration-150 enabled:active:scale-[0.97] disabled:opacity-50"
           >
-            Allow
+            Allow session
           </button>
         </div>
       </div>

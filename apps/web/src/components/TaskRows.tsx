@@ -5,6 +5,7 @@ export type TaskRowData = {
   label: string;
   meta: string;
   status: "pending" | "running" | "failed" | "done";
+  enabled?: boolean;
   details?: Array<{ label: string; meta: string }>;
 };
 
@@ -84,11 +85,15 @@ export default function TaskRows({
   onRun,
   onCopy,
   copiedKey,
+  onToggle,
+  onDelete,
 }: {
   rows: TaskRowData[];
   onRun?: (key: string) => void;
   onCopy?: (key: string, text: string) => void;
   copiedKey?: string | null;
+  onToggle?: (key: string, enabled: boolean) => void;
+  onDelete?: (key: string) => void;
 }) {
   const [manualOpen, setManualOpen] = useState<Record<string, boolean>>({});
 
@@ -181,6 +186,44 @@ export default function TaskRows({
                   className="rounded-full bg-field px-2 py-0.5 text-[11.5px] font-medium text-ink-2 hover:bg-hover"
                 >
                   Run
+                </span>
+              )}
+              {onToggle && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggle(row.key, !(row.enabled ?? true));
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.stopPropagation();
+                      onToggle(row.key, !(row.enabled ?? true));
+                    }
+                  }}
+                  className="rounded-full bg-field px-2 py-0.5 text-[11.5px] font-medium text-ink-2 hover:bg-hover"
+                >
+                  {row.enabled === false ? "Resume" : "Pause"}
+                </span>
+              )}
+              {onDelete && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(row.key);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.stopPropagation();
+                      onDelete(row.key);
+                    }
+                  }}
+                  className="rounded-full px-2 py-0.5 text-[11.5px] font-medium text-ink-3 hover:bg-hover hover:text-red"
+                >
+                  Delete
                 </span>
               )}
               <span

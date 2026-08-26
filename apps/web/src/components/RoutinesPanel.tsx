@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { soraApi, type Agent, type Workflow } from "../api";
+import { apiOrigin, soraApi, type Agent, type Workflow } from "../api";
 import TaskRows, { type TaskRowData } from "./TaskRows";
 
 const CRON_PRESETS = [
@@ -20,11 +20,7 @@ function slugifyName(name: string): string {
 }
 
 function webhookUrl(path: string): string {
-  const origin =
-    typeof window !== "undefined" && window.location.origin
-      ? window.location.origin
-      : "http://127.0.0.1:7420";
-  return `${origin}/api/hooks/${path}`;
+  return `${apiOrigin()}/api/hooks/${path}`;
 }
 
 async function copyText(text: string): Promise<boolean> {
@@ -69,8 +65,9 @@ export default function RoutinesPanel({
     return {
       key: w.slug,
       label: w.name,
-      meta: w.trigger.type,
+      meta: w.enabled ? w.trigger.type : `${w.trigger.type} · paused`,
       status: w.enabled ? "pending" : "failed",
+      enabled: w.enabled,
       details: [
         { label: "Agent", meta: w.agentSlug },
         { label: "Task", meta: w.task.slice(0, 64) },
@@ -234,6 +231,23 @@ export default function RoutinesPanel({
         onRun={(slug) => {
           void soraApi
             .runWorkflow(slug)
+            .then(() => onChanged())
+            .catch((err) =>
+              onError(err instanceof Error ? err.message : String(err)),
+            );
+        }}
+        onToggle={(slug, enabled) => {
+          void soraApi
+            .setWorkflowEnabled(slug, enabled)
+            .then(() => onChanged())
+            .catch((err) =>
+              onError(err instanceof Error ? err.message : String(err)),
+            );
+        }}
+        onDelete={(slug) => {
+          if (!window.confirm(`Delete routine "${slug}"?`)) return;
+          void soraApi
+            .deleteWorkflow(slug)
             .then(() => onChanged())
             .catch((err) =>
               onError(err instanceof Error ? err.message : String(err)),

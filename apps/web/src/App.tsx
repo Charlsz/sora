@@ -362,8 +362,9 @@ export function App() {
   async function respondPermission(
     requestId: string,
     decision: "allow" | "deny",
+    options?: { rememberSession?: boolean },
   ) {
-    await soraApi.respondPermission(requestId, decision);
+    await soraApi.respondPermission(requestId, decision, options);
     setPending((prev) => prev.filter((p) => p.requestId !== requestId));
   }
 
@@ -416,14 +417,20 @@ export function App() {
           setError(null);
           setNav("chats");
         }}
-        onPick={(id, label, prompt) => {
+        onPick={(id, label) => {
           if (id.startsWith("agent:")) {
             setSelected(id.slice(6));
             setNav("chats");
             setChatTitle(label);
           } else if (id.startsWith("wf:")) {
+            const slug = id.slice(3);
             setNav("routines");
-            if (prompt) void send(prompt);
+            void soraApi
+              .runWorkflow(slug)
+              .then(() => refresh())
+              .catch((err) =>
+                setError(err instanceof Error ? err.message : String(err)),
+              );
           }
         }}
       />
@@ -548,8 +555,8 @@ export function App() {
                 <ApprovalCard
                   key={req.requestId}
                   request={req}
-                  onRespond={(decision) =>
-                    respondPermission(req.requestId, decision)
+                  onRespond={(decision, options) =>
+                    respondPermission(req.requestId, decision, options)
                   }
                 />
               ))}
@@ -612,6 +619,15 @@ export function App() {
                     : []
               }
               model={active?.model ?? defaultModel}
+              onModelChange={(key) => {
+                if (!active) return;
+                void soraApi
+                  .updateAgent(active.slug, { model: key })
+                  .then(() => refresh())
+                  .catch((err) =>
+                    setError(err instanceof Error ? err.message : String(err)),
+                  );
+              }}
               onSend={(text) => void send(text)}
             />
           </div>
