@@ -14,7 +14,7 @@ Sora should be the place where you run specialized agents (coding, research, ops
 - **Real tools, real gates.** File, terminal, browser, and HTTP access go through an approval flow you can see in the UI.
 - **Routines that keep running.** Cron and webhooks trigger agents even when the chat window is closed, as long as the local API is up.
 - **Open extension.** MCP servers, OpenAPI specs, Composio, Pipedream, and curated prompts (botdirectory.ai) plug in without forking core code.
-- **Optional cloud when you want it.** Browser automation uses local Playwright when installed. Terminal sandboxes (e.g. E2B) are opt-in, not required.
+- **Optional cloud when you want it.** Browser automation uses local Playwright when installed. Terminal sandboxes (E2B microVMs) are opt-in, fail-closed, and never receive your model API keys — see [docs/sandbox-security.md](docs/sandbox-security.md).
 
 Mobile and fully managed cloud sandboxes are out of scope for now. The focus is a solid desktop experience first.
 
