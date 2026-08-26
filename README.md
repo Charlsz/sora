@@ -1,6 +1,6 @@
 # Sora
 
-**Open-source Grok Bot** — AI teammates with a cloud computer. Bring your own model subscription (OpenAI, Grok, OpenRouter). No Sora account. No Grok Bot fee.
+**AI teammates with a cloud computer.** Bring your own model subscription (OpenAI, Claude, Gemini, Grok, OpenRouter). No Sora account — you pay your providers directly.
 
 **Docs:** [docs/index.md](docs/index.md) · [overview](docs/overview.md)
 
@@ -12,23 +12,15 @@ bun run sora init
 bun run desktop
 ```
 
-Onboarding walks you through: **your name → AI key → cloud sandbox key → first bot.**
+Onboarding: **your name → AI key → cloud sandbox key → first teammate.**
 
 ## What you get
 
-- Teammates you message like coworkers (Sales, Inbox, Ops, …)
-- Each bot runs in a **cloud sandbox VM** (browser, files, terminal, desktop)
-- **Watch** / **Open desktop** — sign into tools, approve when needed
-- Routines, multi-bot handoffs, Composio connectors
-- Keys stay on your machine (`~/.sora`); **you pay providers directly**
-
-## vs Grok Bot
-
-| Grok Bot | Sora |
-|----------|------|
-| Paid subscription | **Free OSS app** |
-| Sign in to SpaceXAI | **No Sora login** |
-| Bundled models + VM | **BYO API keys + E2B sandbox** |
+- Teammates you message like coworkers
+- Each runs in a **cloud sandbox VM** (browser, files, terminal, desktop)
+- **Watch** / **Open** the computer — sign into tools, approve when needed
+- Routines, multi-teammate handoffs, Composio connectors
+- Keys stay on your machine (`~/.sora`)
 
 ## Develop
 

@@ -3,7 +3,6 @@ import {
   connectEvents,
   soraApi,
   type Agent,
-  type Conversation,
   type LiveEntry,
   type PendingPermission,
   type Skill,
@@ -18,9 +17,11 @@ import PromptBar from "./components/PromptBar";
 import ProviderSettings from "./components/ProviderSettings";
 import RoutinesPanel from "./components/RoutinesPanel";
 import SidebarNav from "./components/SidebarNav";
-import WorkBoard, { type WorkerStatus } from "./components/WorkBoard";
 import StreamingText from "./components/StreamingText";
 import type { ToolRow } from "./components/ToolChips";
+import { pickTeammateName } from "./teammateNames";
+
+type WorkerStatus = "idle" | "working" | "needs_you" | "done" | "failed";
 
 function parseSkillFromPrompt(prompt: string): {
   prompt: string;
@@ -29,6 +30,32 @@ function parseSkillFromPrompt(prompt: string): {
   const match = /^\/([\w-]+)\s*(.*)$/s.exec(prompt.trim());
   if (!match) return { prompt };
   return { skill: match[1], prompt: match[2]!.trim() || match[1]! };
+}
+
+function shortModelName(model: string): string {
+  const raw = model.includes(":") ? model.split(":").pop()! : model;
+  const leaf = raw.includes("/") ? raw.split("/").pop()! : raw;
+  return leaf
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .replace(/Gpt/gi, "GPT")
+    .replace(/Claude /i, "Claude ");
+}
+
+function friendlyToolLabel(raw: string): string {
+  const n = raw.toLowerCase();
+  if (n.includes("web") || n.includes("search") || n.includes("browse"))
+    return "Searching the web";
+  if (n.includes("browser") || n.includes("navigate")) return "Using the browser";
+  if (n.includes("read") || n.includes("fetch") || n.includes("http"))
+    return "Reading sources";
+  if (n.includes("terminal") || n.includes("shell") || n.includes("exec"))
+    return "Running in terminal";
+  if (n.includes("write") || n.includes("edit")) return "Editing files";
+  if (n.includes("list") || n.includes("fs.")) return "Inspecting files";
+  if (n.includes("screenshot")) return "Taking a screenshot";
+  if (n.includes("memory")) return "Checking memory";
+  return raw.replace(/[_.:]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 export function App() {
@@ -44,8 +71,8 @@ export function App() {
   const [nav, setNav] = useState("chats");
   const [chatTitle, setChatTitle] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
-  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [defaultModel, setDefaultModel] = useState<string>("");
+  const [displayName, setDisplayName] = useState<string | null>(null);
   const [aiConnected, setAiConnected] = useState(false);
   const [computerReady, setComputerReady] = useState(false);
   const [onboardingDone, setOnboardingDone] = useState(false);
@@ -61,26 +88,28 @@ export function App() {
   );
 
   async function refresh() {
-    const [a, s, w, p, providers] = await Promise.all([
+    const [a, s, w, p, providers, config] = await Promise.all([
       soraApi.agents(),
       soraApi.skills(),
       soraApi.workflows(),
       soraApi.pendingPermissions().catch(() => [] as PendingPermission[]),
       soraApi.providers().catch(() => null),
+      soraApi.getConfig().catch(() => null),
     ]);
     setAgents(a);
     setSkills(s);
     setWorkflows(w);
     setPending(p);
+    if (config?.displayName) setDisplayName(config.displayName);
     if (providers) {
       setDefaultModel(providers.defaultModel);
       setAiConnected(
         providers.providers.some(
           (p) =>
             p.configured &&
+            p.needsKey &&
             p.id !== "mock" &&
-            p.kind !== "infra" &&
-            (p.needsKey || p.id === "ollama"),
+            p.kind !== "infra",
         ),
       );
       setComputerReady(
@@ -234,14 +263,12 @@ export function App() {
   useEffect(() => {
     if (!selected) {
       setConversationId(null);
-      setConversations([]);
       setLive([]);
       return;
     }
     void (async () => {
       try {
         const convs = await soraApi.conversations(selected);
-        setConversations(convs);
         if (convs.length === 0) {
           setConversationId(null);
           setLive([]);
@@ -252,7 +279,6 @@ export function App() {
         await loadConversation(latest.id);
       } catch {
         setConversationId(null);
-        setConversations([]);
         setLive([]);
       }
     })();
@@ -293,49 +319,38 @@ export function App() {
     .find((e): e is Extract<LiveEntry, { kind: "user" }> => e.kind === "user");
   const latestUserTask = latestUser?.content ?? chatTitle;
 
-  /** Teammates, with the selected one’s conversations nested underneath. */
-  const sidebarList = useMemo(() => {
-    const rows: Array<{
-      id: string;
-      label: string;
-      nested?: boolean;
-      status?: string;
-      teammate?: boolean;
-    }> = [];
-    for (const a of agents) {
+  /** Teammates roster only — name + what they’re doing now. */
+  const sidebarTeammates = useMemo(() => {
+    return agents.map((a) => {
       const isActive = a.slug === selected;
-      const status =
-        isActive && workerStatus === "working"
-          ? "Working"
-          : isActive && workerStatus === "needs_you"
-            ? "Needs you"
-            : a.status === "running"
-              ? "Working"
-              : "Idle";
-      rows.push({
+      let activity = "Idle";
+      if (isActive && workerStatus === "working") {
+        activity =
+          toolRows.find((r) => r.status === "started")?.label?.replace(
+            /[_.:]/g,
+            " ",
+          ) ||
+          latestUserTask?.slice(0, 48) ||
+          "Working…";
+      } else if (isActive && workerStatus === "needs_you") {
+        activity = "Waiting for your approval";
+      } else if (isActive && workerStatus === "done" && latestUserTask) {
+        activity = latestUserTask.slice(0, 56);
+      } else if (a.status === "running") {
+        activity = "Working…";
+      } else if (a.description?.trim()) {
+        activity = a.description.trim().slice(0, 56);
+      }
+      return {
         id: `agent:${a.slug}`,
         label: a.name,
-        status,
-        teammate: true,
-      });
-      if (isActive) {
-        for (const c of conversations.slice(0, 12)) {
-          rows.push({
-            id: `conv:${c.id}`,
-            label: c.title?.trim() || "Task",
-            nested: true,
-          });
-        }
-      }
-    }
-    return rows;
-  }, [agents, selected, conversations, workerStatus]);
+        role: a.description?.trim()?.slice(0, 32) || undefined,
+        activity,
+      };
+    });
+  }, [agents, selected, workerStatus, toolRows, latestUserTask]);
 
-  const activeListId = conversationId
-    ? `conv:${conversationId}`
-    : selected
-      ? `agent:${selected}`
-      : null;
+  const activeListId = selected ? `agent:${selected}` : null;
 
   async function saveChatAsRoutine() {
     if (!conversationId || !active || saveRoutineBusy) return;
@@ -402,12 +417,6 @@ export function App() {
         conversationId: conversationId ?? undefined,
       });
       setConversationId(result.conversationId);
-      try {
-        const convs = await soraApi.conversations(slug);
-        setConversations(convs);
-      } catch {
-        /* ignore */
-      }
       setLive((prev) => {
         const hasStreamed = prev.some(
           (e) => e.kind === "assistant" && e.streamId,
@@ -453,7 +462,7 @@ export function App() {
     return (
       <div className="flex h-full items-center justify-center px-6">
         <div className="max-w-md text-center">
-          <p className="font-display text-3xl text-ink">Sora</p>
+          <p className="text-3xl font-semibold text-ink">Sora</p>
           <p className="mt-2 text-[14px] text-ink-2">
             Sora isn’t running yet. Open the desktop app again, or start it from
             your install folder.
@@ -463,7 +472,39 @@ export function App() {
     );
   }
 
-  const showChatChrome = nav === "chats" && !showOnboarding;
+  if (showOnboarding) {
+    return (
+      <Onboarding
+        onDone={() => {
+          setOnboardingDone(true);
+          void refresh().then(() => setNav("chats"));
+        }}
+      />
+    );
+  }
+
+  const showChatChrome = nav === "chats";
+  const statusLabel =
+    workerStatus === "working"
+      ? "Working"
+      : workerStatus === "needs_you"
+        ? "Needs you"
+        : workerStatus === "done"
+          ? "Done"
+          : workerStatus === "failed"
+            ? "Failed"
+            : "Ready";
+  const statusDot =
+    workerStatus === "working"
+      ? "bg-accent animate-pulse"
+      : workerStatus === "needs_you"
+        ? "bg-orange"
+        : workerStatus === "failed"
+          ? "bg-red"
+          : "bg-green";
+  const modelLabel = shortModelName(
+    active?.model ?? (defaultModel || "Model"),
+  );
 
   return (
     <div className="flex h-full min-h-0">
@@ -471,12 +512,12 @@ export function App() {
         fill
         brand="Sora"
         monogram="S"
+        displayName={displayName}
         activeId={nav === "chats" ? activeListId : null}
         activeNav={nav}
         onNavigate={setNav}
-        listLabel="Teammates"
         online={apiOk}
-        recents={sidebarList}
+        teammates={sidebarTeammates}
         moreItems={[
           { key: "routines", label: "Schedules" },
           { key: "agents", label: "Manage teammates" },
@@ -485,148 +526,181 @@ export function App() {
         ]}
         footerLabel="Settings"
         onFooterClick={() => setNav("settings")}
-        onNewChat={() => {
-          setNav("agents");
+        onNewTeammate={() => {
+          void (async () => {
+            try {
+              const created = await soraApi.createAgent({
+                name: pickTeammateName(agents.map((a) => a.name)),
+              });
+              await refresh();
+              setSelected(created.slug);
+              setNav("chats");
+              setChatTitle(created.name);
+              setLive([]);
+              setConversationId(null);
+            } catch (err) {
+              setError(err instanceof Error ? err.message : String(err));
+              setNav("agents");
+            }
+          })();
         }}
         onPick={(id, label) => {
           if (id.startsWith("agent:")) {
             setSelected(id.slice(6));
             setNav("chats");
             setChatTitle(label);
-          } else if (id.startsWith("conv:")) {
-            const cid = id.slice(5);
-            setNav("chats");
-            const conv = conversations.find((c) => c.id === cid);
-            setChatTitle(conv?.title || label);
-            void loadConversation(cid).catch((err) =>
-              setError(err instanceof Error ? err.message : String(err)),
-            );
+            setLive([]);
+            setConversationId(null);
           }
         }}
       />
 
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="flex shrink-0 items-center justify-between border-b border-line px-5 py-3">
-          <div className="min-w-0">
-            <h1 className="truncate text-[15px] font-semibold text-ink">
-              {showOnboarding
-                ? "Welcome"
-                : nav === "routines"
-                  ? "Schedules"
-                  : nav === "agents"
-                    ? "New teammate"
-                    : nav === "plugins"
-                      ? "Connected apps"
-                      : nav === "settings"
-                        ? "Connections"
-                        : (active?.name ?? "Pick a teammate")}
-            </h1>
-            {showChatChrome && active && (
-              <p className="flex items-center gap-1.5 truncate text-[12px] text-ink-3">
-                <span
-                  className={`size-1.5 shrink-0 rounded-full ${
-                    workerStatus === "working"
-                      ? "bg-accent animate-pulse"
-                      : workerStatus === "needs_you"
-                        ? "bg-orange"
-                        : workerStatus === "done"
-                          ? "bg-green"
-                          : "bg-ink-3"
-                  }`}
-                />
-                {workerStatus === "working"
-                  ? "Working"
-                  : workerStatus === "needs_you"
-                    ? "Needs your approval"
-                    : workerStatus === "done"
-                      ? "Done"
-                      : workerStatus === "failed"
-                        ? "Failed"
-                        : "Idle · give them a task"}
-              </p>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {showChatChrome && active && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLive([]);
-                    setChatTitle(null);
-                    setConversationId(null);
-                    setError(null);
-                  }}
-                  className="rounded-control bg-field px-2.5 py-1.5 text-[12px] font-medium text-ink-2 hover:bg-hover"
-                >
-                  New task
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setComputerOpen((o) => !o)}
-                  className={`rounded-control px-2.5 py-1.5 text-[12px] font-medium ${
-                    computerOpen
-                      ? "bg-green-tint text-green"
-                      : "bg-field text-ink-2 hover:bg-hover"
-                  }`}
-                >
-                  Computer
-                </button>
-                <div className="relative" ref={headerMenuRef}>
+        <header className="flex shrink-0 flex-col gap-2 border-b border-line px-5 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-baseline gap-3">
+                <h1 className="truncate text-[16px] font-semibold text-ink">
+                  {nav === "routines"
+                    ? "Schedules"
+                    : nav === "agents"
+                      ? "New teammate"
+                      : nav === "plugins"
+                        ? "Connected apps"
+                        : nav === "settings"
+                          ? "Connections"
+                          : (active?.name ?? "Pick a teammate")}
+                </h1>
+                {showChatChrome && active && (
+                  <span className="shrink-0 text-[12.5px] font-medium text-ink-3">
+                    {modelLabel}
+                  </span>
+                )}
+              </div>
+              {showChatChrome && active && (
+                <p className="mt-1 flex items-center gap-1.5 text-[12.5px] text-ink-2">
+                  <span
+                    className={`size-1.5 shrink-0 rounded-full ${statusDot}`}
+                  />
+                  {statusLabel}
+                </p>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5">
+              {showChatChrome && active && (
+                <>
                   <button
                     type="button"
-                    aria-label="More actions"
-                    onClick={() => setHeaderMenuOpen((o) => !o)}
-                    className="flex size-8 items-center justify-center rounded-control bg-field text-ink-2 hover:bg-hover"
+                    onClick={() => setComputerOpen((o) => !o)}
+                    className={`rounded-control px-2.5 py-1.5 text-[12px] font-medium ${
+                      computerOpen
+                        ? "bg-green-tint text-green"
+                        : "bg-field text-ink-2 hover:bg-hover"
+                    }`}
+                    title="Computer"
                   >
-                    ···
+                    Computer
                   </button>
-                  {headerMenuOpen && (
-                    <div className="absolute top-full right-0 z-40 mt-1 w-48 rounded-[12px] bg-surface p-1 shadow-overlay">
-                      <button
-                        type="button"
-                        disabled={
-                          !conversationId ||
-                          saveRoutineBusy ||
-                          !toolRows.some((t) => t.status === "completed")
-                        }
-                        onClick={() => void saveChatAsRoutine()}
-                        className="flex h-9 w-full items-center rounded-[8px] px-2.5 text-left text-[13px] text-ink-2 hover:bg-hover disabled:opacity-40"
-                      >
-                        Save as schedule
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setHeaderMenuOpen(false);
-                          setNav("agents");
-                        }}
-                        className="flex h-9 w-full items-center rounded-[8px] px-2.5 text-left text-[13px] text-ink-2 hover:bg-hover"
-                      >
-                        Manage teammate
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
+                  <div className="relative" ref={headerMenuRef}>
+                    <button
+                      type="button"
+                      aria-label="More actions"
+                      onClick={() => setHeaderMenuOpen((o) => !o)}
+                      className="flex size-8 items-center justify-center rounded-control bg-field text-ink-2 hover:bg-hover"
+                    >
+                      ···
+                    </button>
+                    {headerMenuOpen && (
+                      <div className="absolute top-full right-0 z-40 mt-1 w-52 rounded-[12px] bg-surface p-1 shadow-overlay">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLive([]);
+                            setChatTitle(null);
+                            setConversationId(null);
+                            setError(null);
+                            setHeaderMenuOpen(false);
+                          }}
+                          className="flex h-9 w-full items-center rounded-[8px] px-2.5 text-left text-[13px] text-ink-2 hover:bg-hover"
+                        >
+                          New task
+                        </button>
+                        <button
+                          type="button"
+                          disabled={
+                            !conversationId ||
+                            saveRoutineBusy ||
+                            !toolRows.some((t) => t.status === "completed")
+                          }
+                          onClick={() => void saveChatAsRoutine()}
+                          className="flex h-9 w-full items-center rounded-[8px] px-2.5 text-left text-[13px] text-ink-2 hover:bg-hover disabled:opacity-40"
+                        >
+                          Save as schedule
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHeaderMenuOpen(false);
+                            setNav("agents");
+                          }}
+                          className="flex h-9 w-full items-center rounded-[8px] px-2.5 text-left text-[13px] text-ink-2 hover:bg-hover"
+                        >
+                          Manage teammate
+                        </button>
+                        {(active
+                          ? [
+                              {
+                                key: active.model,
+                                name: shortModelName(active.model),
+                              },
+                              {
+                                key: defaultModel,
+                                name: shortModelName(defaultModel),
+                              },
+                            ].filter(
+                              (m, i, arr) =>
+                                m.key &&
+                                arr.findIndex((x) => x.key === m.key) === i,
+                            )
+                          : []
+                        ).map((m) => (
+                          <button
+                            key={m.key}
+                            type="button"
+                            onClick={() => {
+                              setHeaderMenuOpen(false);
+                              void soraApi
+                                .updateAgent(active.slug, { model: m.key })
+                                .then(() => refresh())
+                                .catch((err) =>
+                                  setError(
+                                    err instanceof Error
+                                      ? err.message
+                                      : String(err),
+                                  ),
+                                );
+                            }}
+                            className="flex h-9 w-full items-center rounded-[8px] px-2.5 text-left text-[13px] text-ink-2 hover:bg-hover"
+                          >
+                            Model · {m.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </header>
 
-        <div className="scroll-pane min-h-0 flex-1 px-5 py-4">
+        <div className="scroll-pane min-h-0 flex-1 px-5 py-5">
           {error && nav !== "chats" && (
             <p className="mb-4 rounded-control bg-red-tint px-3 py-2 text-[13px] text-red">
               {error}
             </p>
           )}
-          {showOnboarding ? (
-            <Onboarding
-              onDone={() => {
-                setOnboardingDone(true);
-                void refresh().then(() => setNav("chats"));
-              }}
-            />
-          ) : nav === "settings" ? (
+          {nav === "settings" ? (
             <ProviderSettings onChanged={() => void refresh()} />
           ) : nav === "plugins" ? (
             <PluginsPanel onChanged={() => void refresh()} />
@@ -649,33 +723,18 @@ export function App() {
               onError={(message) => setError(message)}
             />
           ) : (
-            <div className="mx-auto flex w-full max-w-xl flex-col gap-4">
+            <div className="mx-auto flex w-full max-w-xl flex-col gap-5">
               {live.length === 0 && !busy && (
                 <div className="py-16">
-                  <p className="text-[18px] font-semibold text-ink">
-                    {active
-                      ? `Give ${active.name} something to do`
-                      : "Pick a teammate"}
+                  <p className="text-[17px] font-semibold text-ink">
+                    {active ? `Message ${active.name}` : "Pick a teammate"}
                   </p>
                   <p className="mt-2 max-w-sm text-[13.5px] leading-relaxed text-ink-2">
-                    Assign real work. They use their cloud computer — tools,
-                    browser, files — and come back when they need you.
+                    Assign real work. They use their computer — tools, browser,
+                    files — and come back when they need you.
                   </p>
                 </div>
               )}
-
-              {(busy ||
-                toolRows.length > 0 ||
-                pending.length > 0 ||
-                (live.length > 0 && workerStatus !== "idle")) &&
-                active && (
-                  <WorkBoard
-                    workerName={active.name}
-                    taskTitle={latestUserTask}
-                    status={workerStatus}
-                    rows={toolRows}
-                  />
-                )}
 
               {pending.map((req) => (
                 <ApprovalCard
@@ -691,10 +750,10 @@ export function App() {
                 if (entry.kind === "user") {
                   return (
                     <div key={entry.id} className="flex flex-col gap-1">
-                      <span className="text-[11px] font-medium text-ink-3">
+                      <span className="text-[12px] font-semibold text-ink">
                         You
                       </span>
-                      <p className="text-[13.5px] leading-relaxed text-ink">
+                      <p className="text-[14px] leading-relaxed text-ink-2">
                         {entry.content}
                       </p>
                     </div>
@@ -702,16 +761,53 @@ export function App() {
                 }
                 if (entry.kind === "assistant") {
                   return (
-                    <div key={entry.id} className="flex flex-col gap-1">
-                      <span className="text-[11px] font-medium text-ink-3">
-                        {active?.name ?? "Sora"}
+                    <div key={entry.id} className="flex flex-col gap-1.5">
+                      <span className="text-[12px] font-semibold text-ink">
+                        {active?.name ?? "Teammate"}
                       </span>
                       <StreamingText text={entry.content} />
                     </div>
                   );
                 }
+                if (entry.kind === "tool") {
+                  const activeTool = entry.status === "started";
+                  const failed = entry.status === "failed";
+                  const mark = failed ? "✗" : activeTool ? "◉" : "✓";
+                  return (
+                    <div
+                      key={entry.id}
+                      className="flex items-start gap-2 pl-1 text-[13px]"
+                    >
+                      <span
+                        className={`mt-0.5 shrink-0 ${
+                          failed
+                            ? "text-red"
+                            : activeTool
+                              ? "text-accent"
+                              : "text-green"
+                        }`}
+                      >
+                        {mark}
+                      </span>
+                      <span
+                        className={
+                          activeTool ? "font-medium text-ink" : "text-ink-2"
+                        }
+                      >
+                        {friendlyToolLabel(entry.name)}
+                        {activeTool ? "…" : ""}
+                      </span>
+                    </div>
+                  );
+                }
                 return null;
               })}
+
+              {busy && toolRows.every((r) => r.status !== "started") && (
+                <p className="text-[13px] text-ink-3">
+                  {active?.name ?? "Teammate"} is working…
+                </p>
+              )}
 
               {error && (
                 <p className="rounded-control bg-red-tint px-3 py-2 text-[13px] text-red">
@@ -729,9 +825,7 @@ export function App() {
             <PromptBar
               disabled={busy || !active}
               placeholder={
-                active
-                  ? `Give ${active.name} a task…`
-                  : "Pick a teammate first"
+                active ? `+ Message ${active.name}` : "Pick a teammate first"
               }
               agents={agents.map((a) => ({
                 key: a.slug,
@@ -743,66 +837,23 @@ export function App() {
                 name: `/${s.name}`,
                 desc: s.description,
               }))}
-              models={
-                active
-                  ? [
-                      {
-                        key: active.model,
-                        name: active.model,
-                        desc: "Bot model",
-                      },
-                      {
-                        key: defaultModel,
-                        name: defaultModel,
-                        desc: "Workspace default",
-                      },
-                    ].filter(
-                      (m, i, arr) =>
-                        arr.findIndex((x) => x.key === m.key) === i,
-                    )
-                  : defaultModel
-                    ? [
-                        {
-                          key: defaultModel,
-                          name: defaultModel,
-                          desc: "Default",
-                        },
-                      ]
-                    : []
-              }
-              model={active?.model ?? defaultModel}
-              onModelChange={(key) => {
-                if (!active) return;
-                void soraApi
-                  .updateAgent(active.slug, { model: key })
-                  .then(() => refresh())
-                  .catch((err) =>
-                    setError(err instanceof Error ? err.message : String(err)),
-                  );
-              }}
+              models={[]}
               onSend={(text) => void send(text)}
             />
           </div>
         )}
       </main>
 
-      {computerOpen && (
+      {computerOpen && showChatChrome && (
         <aside className="flex w-[300px] shrink-0 flex-col border-l border-line bg-panel">
           <div className="scroll-pane min-h-0 flex-1 p-4">
             <ComputerPanel
               agentSlug={selected}
               agentName={active?.name}
-              activityRows={toolRows}
-              connectedHint={workerStatus !== "idle"}
+              working={workerStatus === "working"}
+              onClose={() => setComputerOpen(false)}
             />
           </div>
-          <button
-            type="button"
-            onClick={() => setComputerOpen(false)}
-            className="shrink-0 border-t border-line px-4 py-2 text-left text-[12px] text-ink-3 hover:bg-hover hover:text-ink"
-          >
-            Hide computer
-          </button>
         </aside>
       )}
     </div>

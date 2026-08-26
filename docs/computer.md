@@ -1,6 +1,6 @@
 # Computer
 
-Each bot gets **its own cloud sandbox** — a virtual machine with browser, files, terminal, and a watchable desktop. This is the Grok Bot model: work runs in the cloud so jobs do not stall when you step away.
+Each bot gets **its own cloud sandbox** — a virtual machine with browser, files, terminal, and a watchable desktop. Work runs in the cloud so jobs do not stall when you step away.
 
 ```text
 you → task → bot (local app / chat)
@@ -54,11 +54,11 @@ Config (`~/.sora/config.json`):
 
 Fail-closed: missing E2B key → clear error, never silent fallback to your host shell.
 
-## What's still missing vs Grok Bot
+## What's still missing for full teammate Computer
 
-1. **Bundled VM** in one subscription (Sora uses BYO E2B today)  
-2. **Demo capture → routine** (screen recording UX)  
-3. **24/7 hosted control plane** without your desktop app running  
-4. **Native iOS** messaging surface  
+1. Bundled VM in one subscription (Sora uses BYO E2B today)  
+2. Demo capture → routine (screen recording UX)  
+3. 24/7 hosted control plane without your desktop app running  
+4. Native mobile messaging surface  
 
 See [parity.md](./parity.md).

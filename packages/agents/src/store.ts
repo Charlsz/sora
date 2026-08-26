@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import type { EventBus, SoraDatabase, SoraPaths } from "@sora/core";
+import { isReservedTeammateName, pickTeammateName } from "./names.ts";
 import {
   type Agent,
   type AgentStatus,
@@ -15,8 +16,14 @@ export class AgentStore {
   ) {}
 
   create(input: CreateAgentInput, defaultModel: string): Agent {
-    const name = input.name.trim();
-    if (!name) throw new Error("Agent name is required");
+    const taken = this.list().map((a) => a.name);
+    let name = (input.name ?? "").trim();
+    if (!name) name = pickTeammateName(taken);
+    if (isReservedTeammateName(name)) {
+      throw new Error(
+        `"${name}" is reserved for the app. Pick a teammate name instead.`,
+      );
+    }
 
     const slug = slugify(input.slug ?? name);
     if (!slug) throw new Error("Could not derive agent slug from name");
@@ -177,9 +184,15 @@ export class AgentStore {
     >,
   ): Agent {
     const agent = this.requireBySlug(slug);
+    const nextName = patch.name?.trim() || agent.name;
+    if (isReservedTeammateName(nextName)) {
+      throw new Error(
+        `"${nextName}" is reserved for the app. Pick a teammate name instead.`,
+      );
+    }
     const updated: Agent = {
       ...agent,
-      name: patch.name?.trim() || agent.name,
+      name: nextName,
       description: patch.description ?? agent.description,
       instructions: patch.instructions ?? agent.instructions,
       model: patch.model ?? agent.model,
@@ -235,14 +248,12 @@ export class AgentStore {
 }
 
 function defaultInstructions(name: string, description: string): string {
-  const desc = description.trim() || "a specialized Sora agent";
+  const role = description.trim() || "an AI teammate";
   return [
-    `You are ${name}.`,
-    `You are ${desc}.`,
+    `You are ${name}, ${role}.`,
     "Be concise, practical, and honest about what you can and cannot do.",
-    "Use tools when they help complete the user's request.",
-    "When another agent is a better fit, use delegate_task instead of doing their work yourself.",
-    "You operate inside the Sora local runtime.",
+    "Use your computer and tools when they help complete the request.",
+    "When another teammate is a better fit, use delegate_task instead of doing their work yourself.",
   ].join(" ");
 }
 

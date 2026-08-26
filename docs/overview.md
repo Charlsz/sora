@@ -1,42 +1,36 @@
 # Overview
 
-**Sora is open-source Grok Bot.** Same idea — AI teammates you message like coworkers, each with a real cloud computer, signing into your tools and finishing work end-to-end. The difference: **you bring your own model subscription** (OpenAI, Grok, OpenRouter, …) and **there is no Sora account** to sign into.
+**Sora** is an open-source desktop app for **AI teammates with a real computer**. Message specialized bots, give them work, watch their cloud sandbox, approve when needed, and run routines — while you bring your own models and sandbox provider.
 
-Grok Bot is paid and bundled. Sora is free software you download; you pay your providers directly.
+## Product promise
 
-## What you get
+**AI teammates, not chatbots.** You assign a task like you would to a coworker. The bot works end-to-end in its **own cloud sandbox** (browser, files, terminal, desktop), signs into your tools via connectors, and comes back with finished work or an approval ask.
 
-| Grok Bot | Sora |
-|----------|------|
-| AI teammates with a cloud computer | Same |
-| Message bots, assign work, approve when needed | Same |
-| Watch the bot’s desktop | Same (E2B sandbox stream) |
-| Bots sign into Gmail, Salesforce, LinkedIn, … | Composio connectors (BYO) |
-| Routines + multi-bot parallel work | Cron/webhooks + multi-agent |
-| **Paid Grok Bot / Cursor subscription** | **Your own API keys** |
-| **Sign in to SpaceXAI** | **No Sora login (for now)** |
+**Desktop app, cloud execution.** The UI and your chat history run locally (`~/.sora`). Each bot’s **Computer** is an isolated cloud VM (E2B sandbox by default) so work does not stall when you close the laptop.
 
-## How it works
+**Bring your providers.** Models (OpenRouter, OpenAI, Anthropic, Gemini, xAI, …) and the sandbox VM (E2B) use your accounts — no Sora subscription and no Sora login (for now).
 
-1. **Download** the desktop app (Windows / Mac).
-2. **Connect your AI** — paste a key from OpenRouter, OpenAI, or xAI (your existing provider billing).
-3. **Connect bot computer** — E2B sandbox key spins up a **cloud VM** per bot (browser, files, terminal, desktop).
-4. **Create teammates** — Sales Outbound, Inbox Manager, etc.
-5. **Give tasks** — they work in the cloud; you **Watch** or **Open desktop** to sign into tools; they ping you for approval.
+**Windows + macOS first.** Desktop daily driver. Mobile and always-on hosting are later.
 
-Chat history and keys live in the app on your machine (`~/.sora`). **Work runs in the cloud** so jobs do not stop when you close the laptop (while the VM is up).
+## At a glance
+
+| | Sora |
+|--|------|
+| Idea | AI teammates with a cloud computer |
+| Computer | Per-bot cloud sandbox (E2B) |
+| Models | Bring your own API keys |
+| Tools / OAuth | Composio + plugins (BYO keys) |
+| Data / chat | Local app + `~/.sora` |
+| Approvals | Yes |
+| Routines | Cron / webhooks / record-from-chat |
+| Watch computer | Watch + Open desktop stream |
 
 ## What “bring your subscription” means
 
-You cannot paste your ChatGPT Plus password and consume that quota — no product offers that officially. You **can**:
-
-- Use **OpenRouter** (one key → GPT, Claude, Grok, Gemini)
-- Use **OpenAI** / **xAI** keys tied to your developer account (same models, pay-as-you-go on your bill)
-
-That is the open-source trade: **no Sora monthly fee**, but you wire up providers yourself once in onboarding.
+You connect provider API keys (OpenRouter recommended for many models in one key). Billing stays on your provider account. Sora does not bill you and does not require a Sora account.
 
 ## Docs
 
 - [Computer](./computer.md) — cloud sandbox VMs  
-- [parity.md](./parity.md) — honest gap list vs Grok Bot  
+- [parity.md](./parity.md) — feature status  
 - [desktop.md](./desktop.md) — install & release

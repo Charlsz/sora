@@ -49,7 +49,7 @@ Sandbox security tests cover: env scrubbing, fail-closed E2B without key, fake p
 
 ## Research regression
 
-After adding Computer / Grok-parity features, require:
+After adding Computer / teammate-parity features, require:
 
 1. Tests for the new path (or Fake provider)
 2. Security review: do secrets leave the host?

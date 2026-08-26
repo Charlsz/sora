@@ -177,6 +177,7 @@ export async function createAgent(
   return services.agents.create(input, services.runtime.config.defaultModel);
 }
 
+export { pickTeammateName, isReservedTeammateName } from "./names.ts";
 export { AgentInboxStore } from "./inbox.ts";
 export { DelegationService } from "./delegation.ts";
 export { AgentRunner, type RunAgentInput, type RunAgentResult } from "./runner.ts";

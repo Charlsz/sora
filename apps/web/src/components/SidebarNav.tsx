@@ -10,48 +10,59 @@ import GlideMenu from "./GlideMenu";
 
 export type SidebarRecent = {
   id: string;
+  /** Teammate display name */
   label: string;
-  prompt?: string;
-  /** Indent under bots (e.g. conversations) */
-  nested?: boolean;
-  /** Teammate status line (Working / Idle) */
-  status?: string;
-  /** True for agent rows (show circle icon) */
-  teammate?: boolean;
+  /** Short role (e.g. Inbox, Research) — shown with name if set */
+  role?: string;
+  /** What they’re doing right now */
+  activity?: string;
+  /** Stable color for the circle */
+  color?: string;
 };
 
 type SidebarNavProps = {
   brand?: string;
   monogram?: string;
-  activeTitle?: string | null;
-  /** Selected list row id (`agent:slug` or `conv:id`). */
+  displayName?: string | null;
   activeId?: string | null;
   className?: string;
   fill?: boolean;
-  onNewChat?: () => void;
-  onPick?: (id: string, label: string, prompt?: string) => void;
+  onNewTeammate?: () => void;
+  onPick?: (id: string, label: string) => void;
   activeNav?: string;
   onNavigate?: (key: string) => void;
   footerLabel?: string;
   onFooterClick?: () => void;
-  /** Primary list — bots (and optional nested conversations). */
-  recents?: SidebarRecent[];
-  /** Section heading above the list. */
-  listLabel?: string;
-  /** Power features under More (routines, models, …). */
+  teammates?: SidebarRecent[];
   moreItems?: Array<{ key: string; label: string }>;
-  /** Quiet runtime status. */
   online?: boolean | null;
 };
 
 const SIDEBAR_MOTION = {
-  expandedWidth: 224,
-  collapsedWidth: 52,
+  expandedWidth: 260,
+  collapsedWidth: 56,
   duration: 280,
   copyDuration: 180,
   copyOffset: 8,
   easing: "cubic-bezier(0.16, 1, 0.3, 1)",
 };
+
+const CIRCLE_COLORS = [
+  "#3D8B7A",
+  "#5B7CDE",
+  "#8B6BC9",
+  "#C45C6A",
+  "#C48A3A",
+  "#4A9B9B",
+  "#7A6B9E",
+  "#6B8F4E",
+];
+
+export function teammateColor(seed: string): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0;
+  return CIRCLE_COLORS[Math.abs(h) % CIRCLE_COLORS.length]!;
+}
 
 function Icon({
   children,
@@ -77,67 +88,20 @@ function Icon({
   );
 }
 
-function GlideGroup({ children }: { children: ReactNode }) {
-  return (
-    <GlideMenu
-      rowSelector="[data-row]"
-      highlightClassName="sidebar-glide-highlight rounded-[7px] bg-hover-2"
-      className="group/glide flex flex-col gap-px"
-    >
-      {children}
-    </GlideMenu>
-  );
-}
-
-function RailButton({
-  icon,
-  label,
-  active = false,
-  onClick,
-}: {
-  icon: ReactNode;
-  label: string;
-  active?: boolean;
-  onClick?: () => void;
-}) {
-  return (
-    <button
-      data-row
-      type="button"
-      onClick={onClick}
-      className={`sidebar-row relative z-10 mx-2 flex h-8 items-center rounded-[8px] px-2 text-left
-        transition-[width,background-color,color,transform] duration-150 active:scale-[0.98]
-        ${active ? "bg-hover-2 group-hover/glide:bg-transparent" : ""}`}
-    >
-      <span
-        className={`flex size-5 shrink-0 items-center justify-center ${active ? "text-ink" : "text-ink-2"}`}
-      >
-        {icon}
-      </span>
-      <span
-        className={`sidebar-copy ml-1.5 min-w-0 flex-1 truncate text-[14px] font-medium ${active ? "text-ink" : "text-ink-2"}`}
-      >
-        {label}
-      </span>
-    </button>
-  );
-}
-
 export default function SidebarNav({
   brand = "Sora",
   monogram = "S",
-  activeTitle,
+  displayName,
   activeId,
   className = "",
   fill = false,
-  onNewChat,
+  onNewTeammate,
   onPick,
   activeNav,
   onNavigate,
   footerLabel = "Settings",
   onFooterClick,
-  recents = [],
-  listLabel = "Bots",
+  teammates = [],
   moreItems = [],
   online = null,
 }: SidebarNavProps) {
@@ -151,32 +115,17 @@ export default function SidebarNav({
   const [moreOpen, setMoreOpen] = useState(false);
   const [morePos, setMorePos] = useState({ top: 0, left: 0 });
   const moreBtnRef = useRef<HTMLButtonElement>(null);
-  const [workspaceOpen, setWorkspaceOpen] = useState(false);
-  const [workspacePosition, setWorkspacePosition] = useState({
-    top: 0,
-    left: 0,
-  });
   const [query, setQuery] = useState("");
-  const workspaceButtonRef = useRef<HTMLButtonElement>(null);
 
-  const visibleRecents = recents.filter((item) =>
-    item.label.toLowerCase().includes(query.trim().toLowerCase()),
-  );
-
-  useEffect(() => {
-    if (!workspaceOpen) return;
-    const close = (event: PointerEvent) => {
-      const target = event.target as Element;
-      if (
-        !target.closest("[data-workspace-trigger]") &&
-        !target.closest("[data-workspace-menu]")
-      ) {
-        setWorkspaceOpen(false);
-      }
-    };
-    document.addEventListener("pointerdown", close);
-    return () => document.removeEventListener("pointerdown", close);
-  }, [workspaceOpen]);
+  const visible = teammates.filter((t) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      t.label.toLowerCase().includes(q) ||
+      (t.role?.toLowerCase().includes(q) ?? false) ||
+      (t.activity?.toLowerCase().includes(q) ?? false)
+    );
+  });
 
   useEffect(() => {
     if (!moreOpen) return;
@@ -193,17 +142,17 @@ export default function SidebarNav({
     return () => document.removeEventListener("pointerdown", close);
   }, [moreOpen]);
 
-  const collapse = () => {
-    setCollapsed(true);
-    setWorkspaceOpen(false);
-    setMoreOpen(false);
-    setQuery("");
-  };
+  const initials = (displayName || brand)
+    .split(/\s+/)
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 
   return (
     <aside
       data-sidebar-collapsed={collapsed}
-      aria-label="Workspace navigation"
+      aria-label="Teammates"
       className={`relative flex shrink-0 overflow-hidden border-r border-line bg-panel transition-[width] ${fill ? "h-full" : "h-[600px]"} ${className}`}
       style={
         {
@@ -218,105 +167,69 @@ export default function SidebarNav({
         } as CSSProperties
       }
     >
-      <div className="flex min-h-0 w-[224px] shrink-0 flex-col py-2">
-        <div className="relative mb-2.5 h-10 shrink-0">
-          <button
-            ref={workspaceButtonRef}
-            data-workspace-trigger
-            type="button"
-            aria-expanded={workspaceOpen}
-            aria-hidden={collapsed}
-            tabIndex={collapsed ? -1 : 0}
-            onClick={() => {
-              if (!workspaceOpen && workspaceButtonRef.current) {
-                const rect =
-                  workspaceButtonRef.current.getBoundingClientRect();
-                setWorkspacePosition({
-                  top: rect.bottom + 6,
-                  left: rect.left,
-                });
-              }
-              setWorkspaceOpen((open) => !open);
-            }}
-            className="sidebar-workspace-control absolute top-1 left-2 flex h-8 w-[164px] items-center rounded-[8px] px-2 text-left transition-[background-color,transform] duration-100 hover:bg-hover-2 active:scale-[0.99]"
-          >
-            <span className="sidebar-logo flex size-5 shrink-0 items-center justify-center rounded-[6px] bg-ink text-[10px] font-semibold text-surface">
+      <div className="flex min-h-0 w-[260px] shrink-0 flex-col py-2">
+        <div className="relative mb-2 flex h-10 shrink-0 items-center px-2">
+          <div className="sidebar-copy flex min-w-0 flex-1 items-center gap-2 px-1">
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-ink text-[10px] font-semibold text-surface">
               {monogram}
             </span>
-            <span className="sidebar-copy ml-1.5 min-w-0 flex-1 truncate text-[14px] font-medium text-ink">
+            <span className="truncate text-[14px] font-semibold text-ink">
               {brand}
             </span>
             {online !== null && (
               <span
-                className={`sidebar-copy size-1.5 shrink-0 rounded-full ${online ? "bg-green" : "bg-ink-3"}`}
-                title={online ? "Runtime online" : "Connecting…"}
+                className={`size-1.5 shrink-0 rounded-full ${online ? "bg-green" : "bg-ink-3"}`}
+                title={online ? "Online" : "Connecting…"}
               />
             )}
-          </button>
-
-          {workspaceOpen &&
-            createPortal(
-              <div
-                data-workspace-menu
-                className="fixed z-50 w-56 rounded-[14px] bg-surface p-1.5 shadow-overlay"
-                style={{
-                  top: workspacePosition.top,
-                  left: workspacePosition.left,
-                  animation: "pop-in 180ms cubic-bezier(0.23,1,0.32,1) both",
-                }}
-              >
-                <p className="px-2 py-1.5 text-[12px] text-ink-3">
-                  Local workspace · ~/.sora
-                </p>
-              </div>,
-              document.body,
-            )}
-
+          </div>
           <button
             type="button"
-            aria-label="Collapse sidebar"
-            aria-hidden={collapsed}
-            tabIndex={collapsed ? -1 : 0}
-            onClick={collapse}
-            className="sidebar-collapse-control absolute top-1 right-2 flex size-8 items-center justify-center rounded-[8px] text-ink-3 transition-[opacity,background-color,color] duration-150 hover:bg-hover-2 hover:text-ink"
+            aria-label={collapsed ? "Expand" : "Collapse"}
+            onClick={() => setCollapsed((c) => !c)}
+            className="flex size-8 shrink-0 items-center justify-center rounded-[8px] text-ink-3 hover:bg-hover-2 hover:text-ink"
           >
-            <Icon size={18}>
-              <path d="M11 17l-5-5 5-5M18 17l-5-5 5-5" />
-            </Icon>
-          </button>
-          <button
-            type="button"
-            aria-label="Expand sidebar"
-            aria-hidden={!collapsed}
-            tabIndex={collapsed ? 0 : -1}
-            onClick={() => setCollapsed(false)}
-            className="sidebar-expand-control absolute top-0.5 left-2 flex size-9 items-center justify-center rounded-[8px] text-ink-3 transition-[opacity,background-color,color] duration-150 hover:bg-hover-2 hover:text-ink"
-          >
-            <Icon size={18}>
-              <path d="M13 17l5-5-5-5M6 17l5-5-5-5" />
+            <Icon size={16}>
+              {collapsed ? (
+                <path d="M13 17l5-5-5-5M6 17l5-5-5-5" />
+              ) : (
+                <path d="M11 17l-5-5 5-5M18 17l-5-5 5-5" />
+              )}
             </Icon>
           </button>
         </div>
 
-        <GlideGroup>
-          <RailButton
-            icon={
-              <Icon size={18}>
-                <path d="M12 5v14M5 12h14" />
-              </Icon>
-            }
-            label="New teammate"
+        <div className="mx-2 mb-2 flex items-center gap-1">
+          <div className="sidebar-copy flex min-w-0 flex-1 items-center rounded-[10px] bg-field px-2.5">
+            <Icon size={14}>
+              <circle cx="11" cy="11" r="7" />
+              <path d="M20 20l-3-3" />
+            </Icon>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search"
+              className="h-8 min-w-0 flex-1 bg-transparent px-2 text-[13px] text-ink outline-none placeholder:text-ink-3"
+            />
+          </div>
+          <button
+            type="button"
+            aria-label="New teammate"
             onClick={() => {
-              selectNav("agents");
-              onNewChat?.();
+              onNewTeammate?.();
             }}
-          />
+            className="flex size-8 shrink-0 items-center justify-center rounded-[10px] bg-field text-ink-2 hover:bg-hover hover:text-ink"
+          >
+            <Icon size={16}>
+              <path d="M12 5v14M5 12h14" />
+            </Icon>
+          </button>
           {moreItems.length > 0 && (
             <button
               ref={moreBtnRef}
-              data-row
               data-more-trigger
               type="button"
+              aria-label="More"
               onClick={() => {
                 if (moreBtnRef.current) {
                   const rect = moreBtnRef.current.getBoundingClientRect();
@@ -324,26 +237,18 @@ export default function SidebarNav({
                 }
                 setMoreOpen((o) => !o);
               }}
-              className={`sidebar-row relative z-10 mx-2 flex h-8 items-center rounded-[8px] px-2 text-left
-                transition-[width,background-color,color,transform] duration-150 active:scale-[0.98]
-                ${moreItems.some((m) => m.key === currentNav) ? "bg-hover-2 group-hover/glide:bg-transparent" : ""}`}
+              className="flex size-8 shrink-0 items-center justify-center rounded-[10px] bg-field text-ink-2 hover:bg-hover hover:text-ink"
             >
-              <span className="flex size-5 shrink-0 items-center justify-center text-ink-2">
-                <Icon size={18}>
-                  <circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none" />
-                  <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
-                  <circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none" />
-                </Icon>
-              </span>
-              <span className="sidebar-copy ml-1.5 min-w-0 flex-1 truncate text-[14px] font-medium text-ink-2">
-                More
-              </span>
+              <Icon size={16}>
+                <circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none" />
+                <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+                <circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none" />
+              </Icon>
             </button>
           )}
-        </GlideGroup>
+        </div>
 
         {moreOpen &&
-          moreItems.length > 0 &&
           createPortal(
             <div
               data-more-menu
@@ -375,109 +280,86 @@ export default function SidebarNav({
             document.body,
           )}
 
-        <div className="mt-3 min-h-0 flex-1 overflow-y-auto">
-          <div className="sidebar-copy mx-2 mb-1 flex h-7 items-center justify-between px-2">
-            <span className="text-[12px] font-medium text-ink-3">{listLabel}</span>
-            {recents.length > 4 && (
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Filter"
-                className="w-16 bg-transparent text-right text-[11px] text-ink-3 outline-none placeholder:text-ink-3"
-              />
-            )}
-          </div>
-
-          <GlideGroup>
-            {visibleRecents.map((item) => {
-              const active = activeId
-                ? item.id === activeId
-                : item.label === activeTitle;
-              const working = item.status?.toLowerCase().includes("working");
+        <div className="min-h-0 flex-1 overflow-y-auto px-1.5">
+          <GlideMenu
+            rowSelector="[data-row]"
+            highlightClassName="sidebar-glide-highlight rounded-[12px] bg-hover-2"
+            className="group/glide flex flex-col gap-0.5"
+          >
+            {visible.map((t) => {
+              const active = activeId === t.id;
+              const color = t.color ?? teammateColor(t.id);
+              const title = t.role ? `${t.label}` : t.label;
               return (
                 <button
-                  key={item.id}
+                  key={t.id}
                   data-row
                   type="button"
-                  title={item.label}
                   onClick={() => {
                     selectNav("chats");
-                    onPick?.(item.id, item.label, item.prompt);
+                    onPick?.(t.id, t.label);
                   }}
-                  className={`sidebar-row relative z-10 mx-2 flex items-center rounded-[8px] text-left transition-[width,background-color,color,transform] duration-150 active:scale-[0.98] ${
-                    item.nested ? "h-7 pl-7 pr-2" : "h-10 px-2"
-                  } ${
+                  className={`sidebar-row relative z-10 flex w-full items-start gap-2.5 rounded-[12px] px-2.5 py-2.5 text-left transition-[background-color,transform] duration-150 active:scale-[0.99] ${
                     active
                       ? "bg-hover-2 group-hover/glide:bg-transparent"
-                      : ""
+                      : "hover:bg-hover/60"
                   }`}
                 >
-                  {!item.nested && item.teammate !== false && (
-                    <span className="relative mr-2 flex size-5 shrink-0 items-center justify-center">
-                      <svg
-                        width="18"
-                        height="18"
-                        viewBox="0 0 18 18"
-                        aria-hidden
-                      >
-                        <circle
-                          cx="9"
-                          cy="9"
-                          r="7"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.6"
-                          className={active ? "text-ink" : "text-ink-3"}
-                        />
-                      </svg>
-                      <span
-                        className={`absolute right-0 bottom-0 size-1.5 rounded-full ${
-                          working ? "bg-accent" : "bg-ink-3"
-                        }`}
-                      />
-                    </span>
-                  )}
-                  <span className="sidebar-copy min-w-0 flex-1 truncate">
+                  <span
+                    className="mt-0.5 size-8 shrink-0 rounded-full"
+                    style={{ backgroundColor: color }}
+                    aria-hidden
+                  />
+                  <span className="sidebar-copy min-w-0 flex-1">
                     <span
-                      className={`block truncate text-[14px] font-medium ${
-                        item.nested ? "text-[13px]" : ""
-                      } ${active ? "text-ink" : "text-ink-2"}`}
+                      className={`block truncate text-[13.5px] font-semibold ${
+                        active ? "text-ink" : "text-ink"
+                      }`}
                     >
-                      {item.label}
+                      {title}
+                      {t.role ? (
+                        <span className="ml-1.5 font-normal text-ink-3">
+                          {t.role}
+                        </span>
+                      ) : null}
                     </span>
-                    {!item.nested && item.status && (
-                      <span className="block truncate text-[11px] text-ink-3">
-                        {item.status}
-                      </span>
-                    )}
+                    <span className="mt-0.5 block truncate text-[12px] text-ink-3">
+                      {t.activity || "Idle"}
+                    </span>
                   </span>
                 </button>
               );
             })}
-            {query && visibleRecents.length === 0 && (
-              <div className="sidebar-copy mx-2 px-2 py-2 text-[12.5px] text-ink-3">
-                No matches
-              </div>
+            {query && visible.length === 0 && (
+              <p className="sidebar-copy px-3 py-3 text-[12.5px] text-ink-3">
+                No teammates match
+              </p>
             )}
-            {!query && recents.length === 0 && (
-              <div className="sidebar-copy mx-2 px-2 py-2 text-[12.5px] text-ink-3">
-                No bots yet
-              </div>
+            {!query && teammates.length === 0 && (
+              <p className="sidebar-copy px-3 py-3 text-[12.5px] text-ink-3">
+                No teammates yet — tap + to create one
+              </p>
             )}
-          </GlideGroup>
+          </GlideMenu>
         </div>
 
-        <div className="sidebar-copy mx-2 mt-3 w-[208px] border-t border-line pt-2">
+        <div className="sidebar-copy mx-2 mt-2 border-t border-line pt-2">
           <button
             type="button"
             onClick={onFooterClick}
-            className="flex h-8 w-full items-center gap-1.5 rounded-[8px] px-2 text-[13px] font-medium text-ink-2 transition-[background-color] duration-150 hover:bg-hover-2 hover:text-ink"
+            className="flex h-11 w-full items-center gap-2.5 rounded-[12px] px-2 text-left hover:bg-hover-2"
           >
-            <Icon size={16}>
-              <circle cx="12" cy="12" r="3" />
-              <path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4" />
-            </Icon>
-            {footerLabel}
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-field text-[11px] font-semibold text-ink-2">
+              {initials}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13px] font-medium text-ink">
+                {displayName?.trim() || "You"}
+              </span>
+              <span className="block truncate text-[11px] text-ink-3">
+                {footerLabel}
+              </span>
+            </span>
           </button>
         </div>
       </div>

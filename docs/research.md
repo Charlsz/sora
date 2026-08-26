@@ -1,11 +1,11 @@
 # Research notes (internal)
 
-Audit date: 2026-08-25. Goal: Win/Mac **desktop** Grok Bot alternative that is as capable as leading open implementations, without becoming a Postgres SaaS clone.
+Audit date: 2026-08-25. Goal: Win/Mac **desktop** AI teammate product that is as capable as leading open implementations, without becoming a Postgres SaaS clone.
 
 ## Primary references
 
-- **Product feeling:** [Grok Bot](https://x.ai/bot) — workers with a computer, approvals, routines  
-- **Backend / feature bar:** open Grok alternatives (see [targets.md](./targets.md) for the engineering checklist). Study their computer providers, permission brokers, connector UX, and packaged desktop flows — do not copy their stacks wholesale.
+- **Product feeling:** workers with a computer, approvals, routines (messaging-app roster of bots)  
+- **Backend / feature bar:** open teammate/agent products (see [targets.md](./targets.md)). Study computer providers, permission brokers, connector UX, and packaged desktop flows — do not copy stacks wholesale.
 
 ## Locked decisions
 
@@ -13,7 +13,7 @@ Audit date: 2026-08-25. Goal: Win/Mac **desktop** Grok Bot alternative that is a
 2. **Local control plane:** SQLite + `~/.sora`, not Postgres/Graphile as a requirement.  
 3. **BYO models via API keys**, not “must install Claude/Codex CLI.”  
 4. **Pluggable Computer** (local / E2B / Docker → full desktop stream next).  
-5. **User-facing docs** compare to Grok Bot only; competitor names stay in `targets.md` / this file.
+5. **User-facing docs** describe Sora without naming competitors; engineering refs stay in `targets.md` / this file.
 
 ## Still open for v1 polish
 

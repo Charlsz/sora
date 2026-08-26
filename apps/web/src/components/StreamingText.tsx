@@ -39,7 +39,7 @@ export default function StreamingText({
 
   return (
     <div className={fill ? "w-full motion-gpu" : "w-full max-w-95 motion-gpu"}>
-      <p className="text-[13px] leading-relaxed text-ink whitespace-pre-wrap">
+      <p className="text-[14px] leading-relaxed text-ink whitespace-pre-wrap">
         {words.slice(0, count).join("")}
         {!done && (
           <span className="ml-0.5 inline-block h-3 w-0.5 translate-y-0.5 rounded-full bg-ink" />

@@ -232,8 +232,11 @@ export const soraApi = {
   health: () => api<{ ok: boolean }>("/api/health"),
   agents: () => api<Agent[]>("/api/agents"),
   agent: (slug: string) => api<Agent>(`/api/agents/${slug}`),
-  createAgent: (body: { name: string; description?: string }) =>
-    api<Agent>("/api/agents", { method: "POST", body: JSON.stringify(body) }),
+  createAgent: (body?: { name?: string; description?: string }) =>
+    api<Agent>("/api/agents", {
+      method: "POST",
+      body: JSON.stringify(body ?? {}),
+    }),
   updateAgent: (
     slug: string,
     body: {

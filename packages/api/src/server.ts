@@ -94,18 +94,23 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
             description?: string;
             model?: string;
           };
-          if (!body.name?.trim()) {
-            return json({ error: "name is required" }, cors, 400);
+          try {
+            const agent = services.agents.create(
+              {
+                name: body.name,
+                description: body.description,
+                model: body.model,
+              },
+              services.runtime.config.defaultModel,
+            );
+            return json(agent, cors, 201);
+          } catch (err) {
+            return json(
+              { error: err instanceof Error ? err.message : String(err) },
+              cors,
+              400,
+            );
           }
-          const agent = services.agents.create(
-            {
-              name: body.name,
-              description: body.description,
-              model: body.model,
-            },
-            services.runtime.config.defaultModel,
-          );
-          return json(agent, cors, 201);
         }
 
         const runMatch = /^\/api\/agents\/([^/]+)\/run$/.exec(url.pathname);
@@ -151,13 +156,21 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
               );
             }
           }
-          const agent = services.agents.update(slug, {
-            name: body.name,
-            description: body.description,
-            instructions: body.instructions,
-            model: body.model?.trim(),
-          });
-          return json(agent, cors);
+          try {
+            const agent = services.agents.update(slug, {
+              name: body.name,
+              description: body.description,
+              instructions: body.instructions,
+              model: body.model?.trim(),
+            });
+            return json(agent, cors);
+          } catch (err) {
+            return json(
+              { error: err instanceof Error ? err.message : String(err) },
+              cors,
+              400,
+            );
+          }
         }
 
         if (agentMatch && req.method === "DELETE") {

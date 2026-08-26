@@ -31,7 +31,8 @@ export type Agent = {
 };
 
 export type CreateAgentInput = {
-  name: string;
+  /** Display name. If omitted, a friendly unused name is picked. */
+  name?: string;
   description?: string;
   instructions?: string;
   model?: string;

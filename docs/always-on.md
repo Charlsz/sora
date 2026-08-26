@@ -1,6 +1,6 @@
 # Always-on Sora (routines without your laptop)
 
-Grok Bot runs in the cloud 24/7. Sora is local-first: **cron and webhooks only fire while the API process is running**. You can keep that process up on your own machine or on a small VPS.
+Cloud always-on agents keep working when your laptop is closed. Sora is local-first: **cron and webhooks only fire while the API process is running**. You can keep that process up on your own machine or on a small VPS.
 
 Quick helper (prints or writes OS service files):
 
@@ -116,7 +116,7 @@ A optional **Sora relay** would:
 2. Forward payloads to your home API over an outbound WebSocket
 3. Never store conversation content by default
 
-That keeps Grok-style “always reachable webhooks” without moving your data off disk. Track GitHub issues for relay design; until then, use A–C.
+That keeps always-reachable webhooks without moving your data off disk. Track GitHub issues for relay design; until then, use A–C.
 
 ## Checklist
 

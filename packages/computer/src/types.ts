@@ -1,5 +1,5 @@
 /**
- * Computer is the Grok-style coworker surface.
+ * Computer is the teammate coworker surface.
  *
  * Control plane (API, chat, secrets, approvals, routines) stays local.
  * Where the Computer *runs* is a provider choice — not "web = cloud".
@@ -141,7 +141,7 @@ export type ComputerDisplayFrame = {
 };
 
 /**
- * Optional watch surface — Grok Bot "Agent Computer" preview.
+ * Optional watch surface — live Agent Computer preview.
  * Providers without a display return null / unsupported.
  */
 export interface ComputerDisplay {

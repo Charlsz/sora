@@ -1,15 +1,15 @@
 # Product targets (engineering)
 
-**Purpose:** Sora is an open-source **Grok Bot alternative** shipped as a **native desktop app for Windows and macOS** (no Linux installer, no mobile in v1).
+**Purpose:** Sora is an open-source **AI teammate workspace** shipped as a **native desktop app for Windows and macOS** (no Linux installer, no mobile in v1).
 
-**UX:** Quiet local worker — assign work, watch it work, approve when asked. Not “ChatGPT with tools.”
+**UX:** Messaging roster of bots — assign work, watch the computer, approve when asked. Not “ChatGPT with tools.”
 
-**Backend / capability bar:** Match what serious open Grok alternatives already deliver. Primary references (engineering only — do not put these names in marketing/README):
+**Backend / capability bar:** Match what serious open teammate/agent products already deliver. Primary references (engineering only — keep out of marketing/README):
 
 - [elie222/rakazo](https://github.com/elie222/rakazo) — BYO model + pluggable computers, teammates, routines, integrations, sandboxes  
 - [milind-soni/OpenMausBot](https://github.com/milind-soni/OpenMausBot) — messaging roster of bots, permission broker, computer panel, Composio, local harness, packaged desktop  
 
-User-facing comparison stays vs **Grok Bot** only ([parity.md](./parity.md)).
+User-facing docs describe Sora on its own ([overview.md](./overview.md), [parity.md](./parity.md)).
 
 ## Ship shape (locked)
 
