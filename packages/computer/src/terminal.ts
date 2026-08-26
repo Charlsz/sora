@@ -1,11 +1,14 @@
 import type { Terminal, TerminalOptions, TerminalResult } from "./types.ts";
 import { LocalFilesystem } from "./filesystem.ts";
+import { buildSafeProcessEnv } from "./security/env.ts";
 import { shellCommand } from "./shell.ts";
 
 /**
  * Best-effort workspace terminal.
  * Sets cwd inside the workspace and rejects obvious escape patterns.
+ * Does NOT inherit host process.env (API keys stay out of the shell).
  * This is not a full OS sandbox — PermissionGate remains mandatory.
+ * For stronger isolation, enable cloud sandbox (E2B) in Settings.
  */
 export class LocalTerminal implements Terminal {
   constructor(private readonly fs: LocalFilesystem) {}
@@ -20,10 +23,7 @@ export class LocalTerminal implements Terminal {
     const timeoutMs = options.timeoutMs ?? 30_000;
     const proc = Bun.spawn(shellCommand(command), {
       cwd,
-      env: {
-        ...process.env,
-        ...options.env,
-      },
+      env: buildSafeProcessEnv(options.env),
       stdout: "pipe",
       stderr: "pipe",
     });
