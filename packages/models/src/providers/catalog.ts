@@ -49,11 +49,13 @@ export const PROVIDER_CATALOG: ProviderCatalogEntry[] = [
   {
     id: "anthropic",
     name: "Anthropic",
-    description: "Claude models via Anthropic-compatible gateway (OpenRouter or custom base URL)",
+    description: "Claude models from your Anthropic account",
     needsKey: true,
-    defaultBaseUrl: "https://openrouter.ai/api/v1",
+    defaultBaseUrl: "https://api.anthropic.com/v1",
     envKey: "ANTHROPIC_API_KEY",
-    allowCustomBaseUrl: true,
+    defaultHeaders: {
+      "anthropic-version": "2023-06-01",
+    },
     docsUrl: "https://docs.anthropic.com",
   },
   {
@@ -77,9 +79,9 @@ export const PROVIDER_CATALOG: ProviderCatalogEntry[] = [
   },
   {
     id: "e2b",
-    name: "E2B (sandbox)",
+    name: "Bot computer (E2B)",
     description:
-      "Cloud microVM for isolated shell + files — API key stays on your machine, never inside the VM",
+      "Cloud sandbox VM for each bot — browser, files, terminal, and a watchable desktop",
     needsKey: true,
     defaultBaseUrl: "https://api.e2b.dev",
     envKey: "E2B_API_KEY",

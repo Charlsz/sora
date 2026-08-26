@@ -45,9 +45,6 @@ function resolveEnvKey(meta: ProviderCatalogEntry): string | undefined {
   if (meta.id === "google") {
     return process.env.GEMINI_API_KEY?.trim();
   }
-  if (meta.id === "anthropic") {
-    return process.env.OPENROUTER_API_KEY?.trim();
-  }
   return undefined;
 }
 

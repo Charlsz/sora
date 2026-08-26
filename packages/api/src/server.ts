@@ -813,6 +813,30 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
           const slug = decodeURIComponent(computerMatch[1]!);
           const agent = services.agents.requireBySlugOrName(slug);
           const computer = services.runner.getComputer(agent);
+          let files: string[] = [];
+          try {
+            const { readdirSync, statSync } = await import("node:fs");
+            const entries = readdirSync(computer.workspaceRoot);
+            files = entries
+              .filter((name) => {
+                if (name.startsWith(".")) return false;
+                try {
+                  return !statSync(
+                    `${computer.workspaceRoot}/${name}`,
+                  ).isDirectory();
+                } catch {
+                  return true;
+                }
+              })
+              .slice(0, 40);
+          } catch {
+            files = [];
+          }
+          const sandbox =
+            "sandboxInfo" in computer
+              ? (computer as { sandboxInfo?: { id?: string; provider?: string } })
+                  .sandboxInfo ?? null
+              : null;
           return json(
             {
               agentSlug: agent.slug,
@@ -821,6 +845,8 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
               provider: computer.provider,
               capabilities: computer.capabilities,
               browser: computer.browser.status(),
+              files,
+              sandbox,
             },
             cors,
           );
@@ -838,16 +864,76 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
             resource: "viewport",
           });
           const computer = services.runner.getComputer(agent);
-          const frame = computer.display
-            ? await computer.display.snapshot()
-            : null;
+          let frame = null;
+          try {
+            frame = computer.display
+              ? await computer.display.snapshot()
+              : null;
+          } catch {
+            frame = null;
+          }
           return json(
             {
-              ok: Boolean(frame),
+              ok: Boolean(computer.capabilities.display),
               watching: Boolean(computer.capabilities.display),
               frame,
             },
             cors,
+          );
+        }
+
+        const takeoverMatch =
+          /^\/api\/agents\/([^/]+)\/computer\/takeover$/.exec(url.pathname);
+        if (takeoverMatch && req.method === "POST") {
+          const slug = decodeURIComponent(takeoverMatch[1]!);
+          const agent = services.agents.requireBySlugOrName(slug);
+          await services.permissions.assert({
+            agentId: agent.id,
+            agentSlug: agent.slug,
+            action: "browser.screenshot",
+            resource: "takeover",
+          });
+          const computer = services.runner.getComputer(agent);
+          if (!computer.display?.requestTakeover) {
+            return json(
+              {
+                ok: false,
+                error:
+                  "This teammate’s computer isn’t a cloud desktop yet. Add an E2B key and set Computer to cloud sandbox.",
+                message:
+                  "This teammate’s computer isn’t a cloud desktop yet. Add an E2B key under Connections.",
+              },
+              cors,
+              400,
+            );
+          }
+          let result: { ok: boolean; message: string };
+          try {
+            result = await computer.display.requestTakeover();
+          } catch (err) {
+            const message =
+              err instanceof Error ? err.message : String(err);
+            return json(
+              {
+                ok: false,
+                error: message,
+                message: `Couldn’t start the desktop: ${message}`,
+              },
+              cors,
+              400,
+            );
+          }
+          return json(
+            {
+              ok: result.ok,
+              streamUrl: result.ok ? result.message : undefined,
+              error: result.ok ? undefined : result.message,
+              message: result.ok
+                ? "Open the stream URL to type and click on the desktop."
+                : result.message,
+            },
+            cors,
+            result.ok ? 200 : 400,
           );
         }
 
@@ -897,6 +983,7 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
           return json(
             {
               defaultModel: services.runtime.config.defaultModel,
+              displayName: services.runtime.config.displayName ?? null,
               browser: services.runtime.config.browser ?? "on",
               computer,
               sandbox: services.runtime.config.sandbox ?? {
@@ -912,6 +999,7 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
         if (url.pathname === "/api/config" && req.method === "PUT") {
           const body = (await req.json()) as {
             defaultModel?: string;
+            displayName?: string;
             browser?: "on" | "off";
             computer?: {
               provider?: string;
@@ -938,6 +1026,7 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
             | "host";
           const patch: {
             defaultModel?: string;
+            displayName?: string;
             browser?: "on" | "off";
             computer?: {
               provider: ComputerProvider;
@@ -954,6 +1043,10 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
               commandTimeoutMs?: number;
             };
           } = {};
+
+          if (body.displayName !== undefined) {
+            patch.displayName = body.displayName.trim().slice(0, 64);
+          }
 
           if (body.defaultModel?.trim()) {
             const ref = body.defaultModel.trim();
@@ -1011,12 +1104,13 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
             !patch.defaultModel &&
             !patch.browser &&
             !patch.sandbox &&
-            !patch.computer
+            !patch.computer &&
+            patch.displayName === undefined
           ) {
             return json(
               {
                 error:
-                  "defaultModel, browser, computer, or sandbox is required",
+                  "displayName, defaultModel, browser, computer, or sandbox is required",
               },
               cors,
               400,
@@ -1024,11 +1118,15 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
           }
 
           const config = services.runtime.updateConfig(patch);
+          if (patch.computer || patch.sandbox) {
+            await services.runner.computers.disposeAll();
+          }
           const { resolveComputerConfig } = await import("@sora/core");
           const computer = resolveComputerConfig(config);
           return json(
             {
               defaultModel: config.defaultModel,
+              displayName: config.displayName ?? null,
               browser: config.browser ?? "on",
               computer,
               sandbox: config.sandbox ?? {

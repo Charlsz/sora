@@ -20,6 +20,10 @@ describe("agents", () => {
       home,
       permissions: { autoApprove: true },
     });
+    services.runtime.updateConfig({
+      defaultModel: "mock:echo",
+      computer: { provider: "local", failClosed: true },
+    });
   });
 
   afterEach(async () => {

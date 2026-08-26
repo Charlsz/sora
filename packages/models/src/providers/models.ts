@@ -24,14 +24,19 @@ export const CURATED_MODELS: Record<string, ModelOption[]> = {
   ],
   anthropic: [
     {
-      id: "anthropic/claude-sonnet-4",
-      name: "Claude Sonnet 4",
-      description: "Via OpenRouter or compatible gateway",
+      id: "claude-sonnet-4-5",
+      name: "Claude Sonnet 4.5",
+      description: "Balanced Claude",
     },
     {
-      id: "anthropic/claude-3.5-sonnet",
-      name: "Claude 3.5 Sonnet",
-      description: "Balanced Claude",
+      id: "claude-opus-4-5",
+      name: "Claude Opus 4.5",
+      description: "Strongest Claude",
+    },
+    {
+      id: "claude-3-5-haiku-latest",
+      name: "Claude 3.5 Haiku",
+      description: "Fast Claude",
     },
   ],
   google: [

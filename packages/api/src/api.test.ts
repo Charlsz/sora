@@ -17,6 +17,10 @@ describe("api server", () => {
       home,
       permissions: { autoApprove: true },
     });
+    services.runtime.updateConfig({
+      defaultModel: "mock:echo",
+      computer: { provider: "local", failClosed: true },
+    });
     await createAgent(services, {
       name: "Klaus",
       description: "Executive assistant",

@@ -109,8 +109,7 @@ export function createSoraServices(
     runtime.paths,
     runtime.events,
     permissions,
-    runtime.config,
-    runtime.secrets,
+    runtime,
     inbox,
   );
   const delegation = new DelegationService({

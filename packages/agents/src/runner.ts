@@ -1,4 +1,4 @@
-import type { EventBus, SoraConfig, SoraPaths, SoraSecrets } from "@sora/core";
+import type { EventBus, SoraPaths, SoraRuntime } from "@sora/core";
 import {
   ComputerRegistry,
   createAgentComputer,
@@ -58,8 +58,7 @@ export class AgentRunner {
     private readonly paths: SoraPaths,
     private readonly events: EventBus,
     private readonly permissions: PermissionGate,
-    private readonly config: SoraConfig,
-    private readonly secrets: SoraSecrets,
+    private readonly runtime: SoraRuntime,
     private readonly inbox: AgentInboxStore | null = null,
   ) {}
 
@@ -84,8 +83,8 @@ export class AgentRunner {
         id,
         workspaceRoot: workspacePath,
         browserProfileDir: profileDir,
-        config: this.config,
-        secrets: this.secrets,
+        config: this.runtime.config,
+        secrets: this.runtime.secrets,
       });
     });
   }
