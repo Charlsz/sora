@@ -10,4 +10,4 @@
 
 UI: **Plugins**. Reload picks up new tools without restarting the whole stack.
 
-Credentials are write-only through the API (same pattern as OpenMausBot / Rakazo).
+Credentials are write-only through the API (never returned after save).

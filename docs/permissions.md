@@ -10,7 +10,7 @@ Sensitive tools call `PermissionGate` before executing.
 | Allow once | Approve this request only |
 | Allow session | Remember `agentId + action` until process restart |
 | Deny | Block the tool |
-| Timeout | After 5 minutes unanswered → deny (OpenMausBot-style broker) |
+| Timeout | After 5 minutes unanswered → deny |
 | `--yes` / `SORA_AUTO_APPROVE=1` | Ask treated as allow (headless) |
 
 ## Default policy

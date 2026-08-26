@@ -24,4 +24,4 @@ Cron and webhooks only fire while `sora start` / the desktop sidecar is running.
 
 ## Limits (honest)
 
-- Event triggers (Slack/GitHub push → routine) are reserved in the schema but not wired like OpenMausBot account integrations yet. Use webhooks as the external entry point.
+- Event triggers (Slack/GitHub push → routine) are reserved in the schema but not wired yet. Use webhooks as the external entry point.

@@ -1,45 +1,44 @@
 # Sandbox & security
 
-Sora can run agent terminals in an isolated cloud microVM (E2B) while keeping the product local-first and smaller than a full “cloud desktop” stack.
+Sora can run agent terminals in an isolated cloud microVM (E2B) while keeping the control plane local-first and smaller than a full “cloud desktop” stack.
 
-## Design vs Rakazo / Grok Bot
+## Design vs Grok Bot
 
-| | Grok Bot | Rakazo | **Sora** |
-|--|----------|--------|----------|
-| Default computer | Always-on cloud desktop | Docker / E2B Desktop / Daytona / Box | **Local** (free, fast) |
-| Optional cloud | N/A | Full GUI computer | **E2B code sandbox** (shell + files only) |
-| Browser | In cloud VM | In cloud VM | **Local Playwright** (no cloud desktop cost) |
-| Durable state | Vendor cloud | Postgres + DATA_DIR checkpoints | SQLite under `~/.sora` |
-| Stack weight | SaaS | Postgres, Graphile, auth, mobile | Bun + SQLite + Tauri |
+| | Grok Bot | **Sora** |
+|--|----------|----------|
+| Default computer | Always-on cloud desktop | **Local** (free, fast) |
+| Optional cloud | N/A (cloud is default) | **E2B code sandbox** (shell + files) or planned desktop providers |
+| Browser | In cloud VM | **Local Playwright** by default (cloud desktop later) |
+| Durable state | Vendor cloud | SQLite under `~/.sora` |
+| Stack weight | SaaS | Bun + SQLite + Tauri |
 
 **Why this is better on cost / size / performance for desktop users**
 
-1. No full Linux desktop image until you need one (Daytona/desktop can come later).
-2. Sandboxes idle out after 10 minutes by default (`idleMs`) instead of always-on Team Computers.
-3. Workspace sync skips `node_modules`, `.git`, and large media — less upload latency.
+1. No full Linux desktop image until you need one.  
+2. Sandboxes idle out after 10 minutes by default (`idleMs`) instead of always-on Team Computers.  
+3. Workspace sync skips `node_modules`, `.git`, and large media — less upload latency.  
 4. Model provider keys never leave the host process.
 
 ## Security rules (non-negotiable)
 
-1. **Host env is not inherited** by agent shells. Local terminal uses an allowlist (`PATH`, `HOME`, …). Keys matching `API_KEY`, `SECRET`, `TOKEN`, `OPENAI_*`, `SORA_*`, etc. are blocked.
-2. **Fail closed.** If sandbox is enabled and the E2B key is missing or the VM cannot start, Sora **does not** fall back to the host shell.
-3. **Provider keys stay on the host.** The E2B API key authenticates the host → E2B API only. Sandbox create uses empty `envs`. Tool `env` overrides are filtered with the same forbid list.
-4. **Output scrubbing.** Known secret substrings are replaced with `[REDACTED]` before tool results return to the model/UI.
-5. **Permissions still apply.** `terminal.exec` / `fs.write` still go through PermissionGate after isolation.
+1. **Host env is not inherited** by agent shells. Local terminal uses an allowlist (`PATH`, `HOME`, …). Keys matching `API_KEY`, `SECRET`, `TOKEN`, `OPENAI_*`, `SORA_*`, etc. are blocked.  
+2. **Fail closed.** If a non-local Computer is selected and the key is missing or the VM cannot start, Sora **does not** fall back to the host shell.  
+3. **Provider keys stay on the host.** The E2B API key authenticates the host → E2B API only. Sandbox create uses empty `envs`. Tool `env` overrides are filtered with the same forbid list.  
+4. **Output scrubbing.** Known secret substrings are replaced with `[REDACTED]` before tool results return to the model/UI.  
+5. **Permissions still apply.** `terminal.exec` / `fs.write` still go through PermissionGate after isolation.  
 6. **Secrets file mode.** `~/.sora/secrets.json` is written with mode `0x600` on Unix.
 
 ## Enable sandbox
 
-1. Settings → **Models & providers** → save an **E2B** key (or set `E2B_API_KEY`).
-2. Computer panel → **Enable E2B sandbox**.
+1. Settings → **Models & providers** → save an **E2B** key (or set `E2B_API_KEY`).  
+2. Computer panel → **Enable E2B sandbox**.  
 3. Agent `terminal` tool now syncs the workspace into `/home/user/workspace` on a Firecracker microVM, runs the command, and syncs files back.
 
-CLI / config:
+Preferred config shape:
 
 ```json
 {
-  "sandbox": {
-    "enabled": true,
+  "computer": {
     "provider": "e2b",
     "failClosed": true,
     "idleMs": 600000,
@@ -48,18 +47,20 @@ CLI / config:
 }
 ```
 
+Legacy `sandbox: { "enabled": true, "provider": "e2b" }` still works and maps into `computer`.
+
 ## Modes
 
 | Mode | Terminal | Files | Browser | Use when |
 |------|----------|-------|---------|----------|
 | Local (default) | Host, scrubbed env | Local workspace | Local Chromium | Daily coding, offline |
 | E2B sandbox | MicroVM only | Synced to/from VM | Local Chromium | Untrusted code, stronger isolation |
-| Daytona | Not shipped yet | — | — | Future |
+| Full cloud desktop | Not shipped yet | — | — | Future “watch the computer” parity |
 
 ## What we deliberately skip (for now)
 
-- Full cloud GUI desktop (Rakazo Box / E2B Desktop) — high cost, larger images.
-- Injecting OpenAI/Anthropic keys into the sandbox so “the VM can call APIs” — that is a credential leak by design; call APIs from the **host** tools instead (`http_request`, MCP, plugins).
+- Full cloud GUI desktop — high cost, larger images.  
+- Injecting OpenAI/Anthropic keys into the sandbox so “the VM can call APIs” — credential leak by design; call APIs from **host** tools instead (`http_request`, MCP, plugins).  
 - Silent “sandbox enabled but running local” — that lied about isolation.
 
 ## Threat model (honest)
@@ -74,4 +75,4 @@ CLI / config:
 | E2B operator sees your workspace files | Only while sandbox is up; don’t put secrets in the workspace |
 | Prompt injection → exfiltrate keys via HTTP tool | PermissionGate ask on `http.request`; review approvals |
 
-Encrypted-at-rest for `secrets.json` (OS keychain / `SORA_ENCRYPTION_KEY`) is the next hardening step after this foundation.
+Encrypted-at-rest for `secrets.json`: set `SORA_ENCRYPTION_KEY` and Sora stores an AES-256-GCM envelope (version 2). Without the env var, plaintext JSON with mode `0o600` remains the default for easy desktop setup.

@@ -1,29 +1,26 @@
 # Overview
 
-Sora is an open-source **agent workspace you run yourself**. Chat with specialized agents, approve what they touch, run routines on a schedule or webhook, and keep conversations, memory, and secrets under `~/.sora`.
+Sora is an open-source **Grok Bot–style agent workspace** you run yourself. Chat with specialized AI coworkers, give them a real computer (browser, files, terminal), approve what they touch, run routines, and keep conversations, memory, and secrets under `~/.sora`.
 
-## Product promise (v1)
+## Product promise
 
-**Windows + macOS desktop daily driver:** create bots, stream chat, use tools (files, terminal, browser, HTTP), connect MCP/OpenAPI plugins, run cron/webhook routines while the local API is up, bring your own models.
+**AI coworker, not just a chatbot.** You assign a task; the agent works through a **Computer** (browse, filesystem, terminal, connectors) and comes back with finished work or an approval ask.
 
-Not v1: mobile, voice, hosted always-on relay, full cloud GUI desktop (Box / E2B Desktop), Linux installers.
+**Local-first control plane.** The app, API, chat history, secrets, and approvals run on your machine. Where the Computer itself runs is a provider choice (this machine, Docker, E2B, a VPS, later your host desktop)—not “everything must be cloud.”
 
-## How Sora compares
+**Windows + macOS first.** Desktop daily driver. Mobile, voice, and Linux installers are deferred.
 
-| | Grok Bot | Rakazo | OpenMausBot | **Sora** |
-|--|----------|--------|-------------|----------|
-| Hosting | Vendor cloud | Self-host Postgres + sandboxes | Local harness + optional Box | **Local Bun + SQLite + Tauri** |
-| Models | Fixed | BYO via Pi | Claude/Codex/Grok **CLIs** | BYO OpenAI-compatible APIs |
-| Computer | Always-on cloud desktop | Docker / E2B Desktop / Daytona / Box | Box / local / host control | Local + **optional E2B microVM** |
-| Approvals | Yes | Yes | Inline broker | UI cards + session allow |
-| Routines | Cloud cron + events | Worker + Markdown | Local webhook receiver | Cron + `/api/hooks` |
-| Data | Cloud | Your server | `~/.openmausbot` | `~/.sora` |
-| Footprint | SaaS | Heavy | Electron + CLI agents | **Smaller desktop stack** |
+## vs Grok Bot
 
-## Positioning
+| | Grok Bot | **Sora** |
+|--|----------|----------|
+| Idea | AI teammates with a real computer | Same |
+| Control / data | Vendor cloud | **Your machine** (`~/.sora`) |
+| Models | Vendor-selected | **Bring your own** |
+| Computer | Persistent cloud VM (shared per account) | **Pluggable Computer** (local / cloud / VPS) |
+| Always-on | Cloud by default | While your runtime (or remote Computer) is up |
+| Approvals | Yes | Yes (allow once / session / deny) |
+| Routines | Schedule + events | Cron + webhooks (+ record-from-chat) |
+| Watch computer | Live Agent Computer | Local preview today; live remote stream next |
 
-- **vs Grok:** Same job (teammates + tools + routines). You own keys and data; no free always-on cloud or mobile.
-- **vs Rakazo:** Same open alternative idea, leaner runtime (no Postgres/Graphile/mobile required for desktop v1).
-- **vs OpenMausBot:** OMB drives installed CLIs (Claude Code, Codex). Sora drives **HTTP model APIs** and a modular tool/MCP layer. We adopted OMB’s permission timeout / session-allow pattern and messaging-style agent roster, not the CLI driver model.
-
-See [research.md](./research.md) for the full audit and adoption decisions.
+See [computer.md](./computer.md) for the Computer abstraction and [research.md](./research.md) for the gap list.

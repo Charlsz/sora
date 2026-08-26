@@ -2,6 +2,13 @@
 
 Grok Bot runs in the cloud 24/7. Sora is local-first: **cron and webhooks only fire while the API process is running**. You can keep that process up on your own machine or on a small VPS.
 
+Quick helper (prints or writes OS service files):
+
+```bash
+bun run always-on
+bun run always-on:write   # writes under ~/.sora/service/
+```
+
 ## What stays local
 
 - Agent workspaces, SQLite history, and secrets remain under `~/.sora` (or `SORA_HOME`) on the host where the API runs.

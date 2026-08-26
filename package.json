@@ -14,7 +14,9 @@
     "dev:web": "bun --filter @sora/web dev",
     "build:web": "bun --filter @sora/web build",
     "test": "bun test",
-    "typecheck": "bunx tsc --noEmit -p tsconfig.json"
+    "typecheck": "bunx tsc --noEmit -p tsconfig.json",
+    "always-on": "bun scripts/install-always-on.ts",
+    "always-on:write": "bun scripts/install-always-on.ts --write"
   },
   "devDependencies": {
     "@types/bun": "latest",
