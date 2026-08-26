@@ -12,12 +12,12 @@ export default function ComputerPanel({
   );
   const [url, setUrl] = useState("https://example.com");
   const [shot, setShot] = useState<string | null>(null);
+  const [watching, setWatching] = useState(false);
   const [busy, setBusy] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [browserEnabled, setBrowserEnabled] = useState(true);
-  const [sandboxEnabled, setSandboxEnabled] = useState(false);
-  const [sandboxProvider, setSandboxProvider] = useState("e2b");
+  const [provider, setProvider] = useState("local");
   const [sandboxMsg, setSandboxMsg] = useState<string | null>(null);
 
   async function refresh() {
@@ -28,8 +28,10 @@ export default function ComputerPanel({
     const config = await soraApi.getConfig().catch(() => null);
     if (config) {
       setBrowserEnabled(config.browser !== "off");
-      setSandboxEnabled(Boolean(config.sandbox?.enabled));
-      setSandboxProvider(config.sandbox?.provider ?? "e2b");
+      const nextProvider =
+        config.computer?.provider ??
+        (config.sandbox?.enabled ? config.sandbox.provider : "local");
+      setProvider(nextProvider);
     }
     if (!agentSlug) {
       setInfo(null);
@@ -44,6 +46,27 @@ export default function ComputerPanel({
       setError(err instanceof Error ? err.message : String(err)),
     );
   }, [agentSlug]);
+
+  useEffect(() => {
+    if (!watching || !agentSlug) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const result = await soraApi.computerDisplay(agentSlug);
+        if (!cancelled && result.frame?.base64) {
+          setShot(result.frame.base64);
+        }
+      } catch {
+        /* ignore transient watch errors */
+      }
+    };
+    void tick();
+    const id = window.setInterval(() => void tick(), 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [watching, agentSlug]);
 
   if (!agentSlug) {
     return (
@@ -73,6 +96,10 @@ export default function ComputerPanel({
     try {
       await soraApi.browserNavigate(agentSlug, url.trim());
       await refresh();
+      if (watching) {
+        const result = await soraApi.computerDisplay(agentSlug);
+        if (result.frame?.base64) setShot(result.frame.base64);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -95,26 +122,27 @@ export default function ComputerPanel({
     }
   }
 
-  async function toggleSandbox() {
+  async function setComputerProvider(next: "local" | "e2b" | "docker") {
     setBusy(true);
     setError(null);
     setSandboxMsg(null);
     try {
-      const next = !sandboxEnabled;
       await soraApi.setConfig({
-        sandbox: {
-          enabled: next,
-          provider: next ? "e2b" : "local",
+        computer: {
+          provider: next,
           failClosed: true,
           idleMs: 600_000,
+          commandTimeoutMs: 120_000,
+          preferDisplay: true,
         },
       });
-      setSandboxEnabled(next);
-      setSandboxProvider(next ? "e2b" : "local");
+      setProvider(next);
       setSandboxMsg(
-        next
-          ? "Cloud sandbox on — terminal runs in an E2B microVM. Add E2B key under Models. Host shell fallback is off."
-          : "Sandbox off — terminal runs locally with a scrubbed env (no API keys).",
+        next === "e2b"
+          ? "E2B Computer — terminal in a microVM. Add E2B key under Models."
+          : next === "docker"
+            ? "Docker Computer — terminal in a Linux container (Docker must be running)."
+            : "Local Computer — terminal on this machine with a scrubbed env.",
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -146,35 +174,40 @@ export default function ComputerPanel({
       <div>
         <h2 className="text-[13px] font-semibold text-ink">Computer</h2>
         <p className="mt-0.5 text-[12px] text-ink-3">
-          Local Chromium per agent — free, no cloud VM required.
+          Watch the browser, open pages, choose where the shell runs.
         </p>
       </div>
 
       <div className="rounded-card bg-surface p-3 shadow-card">
         <div className="flex items-center justify-between gap-2 text-[12px]">
-          <span className="text-ink-2">Cloud sandbox</span>
+          <span className="text-ink-2">Computer provider</span>
           <span
             className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-              sandboxEnabled
+              provider !== "local"
                 ? "bg-green-tint text-green"
                 : "bg-field text-ink-3"
             }`}
           >
-            {sandboxEnabled ? sandboxProvider : "local"}
+            {provider}
           </span>
         </div>
         <p className="mt-2 text-[11px] text-ink-3">
-          Opt-in E2B microVM for shell + files. Smaller/cheaper than a full cloud
-          desktop. Model API keys never enter the VM. See docs/sandbox-security.md.
+          Local is default. E2B / Docker isolate the terminal. Browser stays on
+          this machine. See docs/computer.md.
         </p>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void toggleSandbox()}
-          className="mt-2 rounded-control bg-field px-2.5 py-1 text-[12px] text-ink-2 hover:bg-hover disabled:opacity-50"
-        >
-          {sandboxEnabled ? "Disable sandbox" : "Enable E2B sandbox"}
-        </button>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {(["local", "e2b", "docker"] as const).map((id) => (
+            <button
+              key={id}
+              type="button"
+              disabled={busy || provider === id}
+              onClick={() => void setComputerProvider(id)}
+              className="rounded-control bg-field px-2.5 py-1 text-[12px] text-ink-2 hover:bg-hover disabled:opacity-50"
+            >
+              {id}
+            </button>
+          ))}
+        </div>
         {sandboxMsg && (
           <p className="mt-2 text-[11px] text-ink-3">{sandboxMsg}</p>
         )}
@@ -248,13 +281,25 @@ export default function ComputerPanel({
         >
           Shot
         </button>
+        <button
+          type="button"
+          disabled={!chromiumReady}
+          onClick={() => setWatching((v) => !v)}
+          className={`rounded-control px-3 py-1.5 text-[12.5px] font-medium disabled:opacity-50 ${
+            watching
+              ? "bg-green-tint text-green"
+              : "bg-field text-ink-2 hover:bg-hover"
+          }`}
+        >
+          {watching ? "Watching" : "Watch"}
+        </button>
       </div>
 
       {shot && (
         <div className="overflow-hidden rounded-card border border-line bg-inset">
           <img
             src={`data:image/png;base64,${shot}`}
-            alt="Browser screenshot"
+            alt="Computer display"
             className="w-full"
           />
         </div>

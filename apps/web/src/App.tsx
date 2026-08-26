@@ -3,6 +3,7 @@ import {
   connectEvents,
   soraApi,
   type Agent,
+  type Conversation,
   type LiveEntry,
   type PendingPermission,
   type Skill,
@@ -45,6 +46,7 @@ export function App() {
   const [nav, setNav] = useState("chats");
   const [chatTitle, setChatTitle] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [defaultModel, setDefaultModel] = useState<string>("mock:echo");
   const [onboardingDone, setOnboardingDone] = useState(false);
   const [saveRoutineBusy, setSaveRoutineBusy] = useState(false);
@@ -180,43 +182,50 @@ export function App() {
     });
   }, []);
 
+  async function loadConversation(id: string) {
+    setConversationId(id);
+    const msgs = await soraApi.messages(id);
+    setLive(
+      msgs
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .map((m) =>
+          m.role === "user"
+            ? {
+                kind: "user" as const,
+                id: m.id,
+                content: m.content,
+              }
+            : {
+                kind: "assistant" as const,
+                id: m.id,
+                content: m.content,
+              },
+        ),
+    );
+  }
+
   useEffect(() => {
     if (!selected) {
       setConversationId(null);
+      setConversations([]);
       setLive([]);
       return;
     }
     void (async () => {
       try {
         const convs = await soraApi.conversations(selected);
+        setConversations(convs);
         if (convs.length === 0) {
           setConversationId(null);
           setLive([]);
           return;
         }
         const latest = convs[0]!;
-        setConversationId(latest.id);
         setChatTitle(latest.title || null);
-        const msgs = await soraApi.messages(latest.id);
-        setLive(
-          msgs
-            .filter((m) => m.role === "user" || m.role === "assistant")
-            .map((m) =>
-              m.role === "user"
-                ? {
-                    kind: "user" as const,
-                    id: m.id,
-                    content: m.content,
-                  }
-                : {
-                    kind: "assistant" as const,
-                    id: m.id,
-                    content: m.content,
-                  },
-            ),
-        );
+        await loadConversation(latest.id);
       } catch {
         setConversationId(null);
+        setConversations([]);
         setLive([]);
       }
     })();
@@ -327,6 +336,12 @@ export function App() {
         conversationId: conversationId ?? undefined,
       });
       setConversationId(result.conversationId);
+      try {
+        const convs = await soraApi.conversations(slug);
+        setConversations(convs);
+      } catch {
+        /* ignore */
+      }
       setLive((prev) => {
         const hasStreamed = prev.some(
           (e) => e.kind === "assistant" && e.streamId,
@@ -448,6 +463,34 @@ export function App() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {nav === "chats" && conversations.length > 0 && (
+              <select
+                value={conversationId ?? ""}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  if (!id) {
+                    setConversationId(null);
+                    setLive([]);
+                    setChatTitle(null);
+                    return;
+                  }
+                  const conv = conversations.find((c) => c.id === id);
+                  setChatTitle(conv?.title || null);
+                  void loadConversation(id).catch((err) =>
+                    setError(err instanceof Error ? err.message : String(err)),
+                  );
+                }}
+                className="max-w-[11rem] rounded-control border border-line bg-field px-2 py-1.5 text-[12px] text-ink-2"
+                aria-label="Conversation"
+              >
+                <option value="">New chat</option>
+                {conversations.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.title?.trim() || c.id.slice(0, 10)}
+                  </option>
+                ))}
+              </select>
+            )}
             {nav === "chats" &&
               conversationId &&
               toolRows.some((t) => t.status === "completed") && (

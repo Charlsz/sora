@@ -1,5 +1,11 @@
-import { useState } from "react";
-import { apiOrigin, soraApi, type Agent, type Workflow } from "../api";
+import { useEffect, useState } from "react";
+import {
+  apiOrigin,
+  soraApi,
+  type Agent,
+  type Workflow,
+  type WorkflowRun,
+} from "../api";
 import TaskRows, { type TaskRowData } from "./TaskRows";
 
 const CRON_PRESETS = [
@@ -32,6 +38,15 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
+function formatRun(run: WorkflowRun): { label: string; meta: string } {
+  const when = run.startedAt?.slice(0, 19).replace("T", " ") ?? "—";
+  const detail =
+    run.status === "failed"
+      ? (run.error ?? "failed").slice(0, 48)
+      : (run.reply ?? run.triggerType).slice(0, 48);
+  return { label: `${run.status} · ${when}`, meta: detail };
+}
+
 export default function RoutinesPanel({
   agents,
   workflows,
@@ -51,6 +66,9 @@ export default function RoutinesPanel({
   const [webhook, setWebhook] = useState("");
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const [runsBySlug, setRunsBySlug] = useState<Record<string, WorkflowRun[]>>(
+    {},
+  );
 
   const cron =
     cronPreset === "custom"
@@ -59,9 +77,32 @@ export default function RoutinesPanel({
         ? ""
         : cronPreset;
 
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const entries = await Promise.all(
+        workflows.map(async (w) => {
+          try {
+            const runs = await soraApi.workflowRuns(w.slug, 5);
+            return [w.slug, runs] as const;
+          } catch {
+            return [w.slug, [] as WorkflowRun[]] as const;
+          }
+        }),
+      );
+      if (!cancelled) {
+        setRunsBySlug(Object.fromEntries(entries));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [workflows]);
+
   const rows: TaskRowData[] = workflows.map((w) => {
     const webhookPath =
       w.trigger.type === "webhook" ? w.trigger.path : undefined;
+    const runs = runsBySlug[w.slug] ?? [];
     return {
       key: w.slug,
       label: w.name,
@@ -78,6 +119,9 @@ export default function RoutinesPanel({
         ...(webhookPath
           ? [{ label: "Webhook", meta: webhookUrl(webhookPath) }]
           : []),
+        ...(runs.length
+          ? runs.map((r) => formatRun(r))
+          : [{ label: "Runs", meta: "No runs yet" }]),
       ],
     };
   });

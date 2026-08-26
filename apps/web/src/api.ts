@@ -30,12 +30,30 @@ export type Workflow = {
   enabled: boolean;
 };
 
+export type Conversation = {
+  id: string;
+  title: string;
+  updatedAt?: string;
+  createdAt?: string;
+};
+
 export type ConversationMessage = {
   id: string;
   role: string;
   content: string;
   toolName?: string;
   createdAt: string;
+};
+
+export type WorkflowRun = {
+  id: string;
+  workflowId: string;
+  status: "running" | "completed" | "failed";
+  triggerType: string;
+  reply?: string;
+  error?: string;
+  startedAt: string;
+  finishedAt?: string;
 };
 
 export type PendingPermission = {
@@ -89,6 +107,14 @@ export type ComputerInfo = {
   agentSlug: string;
   workspaceRoot: string;
   kind: string;
+  provider?: string;
+  capabilities?: {
+    filesystem: boolean;
+    terminal: boolean;
+    browser: boolean;
+    display: boolean;
+    persistentProfile: boolean;
+  };
   browser: {
     backend: string;
     open: boolean;
@@ -235,13 +261,26 @@ export const soraApi = {
       body: JSON.stringify(body),
     }),
   conversations: (slug: string) =>
-    api<Array<{ id: string; title: string }>>(
-      `/api/agents/${slug}/conversations`,
-    ),
+    api<Conversation[]>(`/api/agents/${slug}/conversations`),
   messages: (id: string) =>
     api<ConversationMessage[]>(`/api/conversations/${id}/messages`),
   skills: () => api<Skill[]>("/api/skills"),
   workflows: () => api<Workflow[]>("/api/workflows"),
+  workflowRuns: (slug: string, limit = 20) =>
+    api<WorkflowRun[]>(
+      `/api/workflows/${encodeURIComponent(slug)}/runs?limit=${limit}`,
+    ),
+  computerDisplay: (slug: string) =>
+    api<{
+      ok: boolean;
+      watching: boolean;
+      frame: {
+        base64: string;
+        width?: number;
+        height?: number;
+        updatedAt?: string;
+      } | null;
+    }>(`/api/agents/${encodeURIComponent(slug)}/computer/display`),
   createWorkflow: (body: {
     name: string;
     agent: string;
@@ -425,6 +464,13 @@ export const soraApi = {
     api<{
       defaultModel: string;
       browser: "on" | "off";
+      computer?: {
+        provider: string;
+        failClosed?: boolean;
+        idleMs?: number;
+        commandTimeoutMs?: number;
+        preferDisplay?: boolean;
+      };
       sandbox: {
         enabled: boolean;
         provider: string;
@@ -437,6 +483,13 @@ export const soraApi = {
   setConfig: (body: {
     defaultModel?: string;
     browser?: "on" | "off";
+    computer?: {
+      provider?: string;
+      failClosed?: boolean;
+      idleMs?: number;
+      commandTimeoutMs?: number;
+      preferDisplay?: boolean;
+    };
     sandbox?: {
       enabled?: boolean;
       provider?: string;
@@ -448,6 +501,13 @@ export const soraApi = {
     api<{
       defaultModel: string;
       browser: "on" | "off";
+      computer?: {
+        provider: string;
+        failClosed?: boolean;
+        idleMs?: number;
+        commandTimeoutMs?: number;
+        preferDisplay?: boolean;
+      };
       sandbox: {
         enabled: boolean;
         provider: string;
