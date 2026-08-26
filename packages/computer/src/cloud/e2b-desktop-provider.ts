@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import {
   isForbiddenEnvKey,
@@ -13,9 +13,9 @@ import type {
 } from "./types.ts";
 
 const REMOTE_WORKSPACE = "/home/user/workspace";
-const DEFAULT_TIMEOUT_MS = 600_000; // 10 minutes — cheaper than always-on desktops
+const DEFAULT_TIMEOUT_MS = 600_000;
 
-type E2bSandboxHandle = {
+type DesktopHandle = {
   sandboxId: string;
   commands: {
     run: (
@@ -27,23 +27,30 @@ type E2bSandboxHandle = {
     write: (path: string, data: string | Uint8Array) => Promise<unknown>;
     read: (path: string, opts?: { format?: string }) => Promise<string | Uint8Array>;
   };
+  stream: {
+    start: (opts?: { requireAuth?: boolean; viewOnly?: boolean }) => Promise<void>;
+    stop: () => Promise<void>;
+    getUrl: (opts?: { authKey?: string; viewOnly?: boolean }) => string;
+    getAuthKey: () => string;
+  };
+  screenshot: (format?: "bytes") => Promise<Uint8Array>;
   setTimeout: (ms: number) => Promise<unknown> | unknown;
   kill: () => Promise<unknown>;
 };
 
 /**
- * E2B code sandbox (Firecracker microVM) — not E2B Desktop.
- * Lean code sandbox (shell + files); browser stays on the host.
- * For full GUI + stream, use E2bDesktopProvider (preferDisplay).
+ * Full Linux GUI desktop via @e2b/desktop — live stream + screenshots for Watch / takeover.
  */
-export class E2bSandboxSession implements SandboxSession {
+export class E2bDesktopSession implements SandboxSession {
   readonly info: SandboxSessionInfo;
-  #handle: E2bSandboxHandle;
+  #handle: DesktopHandle;
   #secretValues: string[];
   #timeoutMs: number;
+  #streamStarted = false;
+  #streamUrl: string | null = null;
 
   constructor(
-    handle: E2bSandboxHandle,
+    handle: DesktopHandle,
     secretValues: string[] = [],
     timeoutMs = DEFAULT_TIMEOUT_MS,
   ) {
@@ -52,9 +59,9 @@ export class E2bSandboxSession implements SandboxSession {
     this.#timeoutMs = timeoutMs;
     this.info = {
       id: handle.sandboxId,
-      provider: "e2b",
+      provider: "e2b-desktop",
       remoteWorkspace: REMOTE_WORKSPACE,
-      capabilities: { shell: true, files: true, desktop: false },
+      capabilities: { shell: true, files: true, desktop: true },
     };
   }
 
@@ -62,7 +69,7 @@ export class E2bSandboxSession implements SandboxSession {
     command: string,
     options?: TerminalOptions,
   ): Promise<TerminalResult> {
-    const envs = filterSandboxEnv(options?.env);
+    const envs = filterEnv(options?.env);
     const cwd = options?.cwd ?? this.info.remoteWorkspace;
     const result = await this.#handle.commands.run(command, {
       cwd,
@@ -93,7 +100,11 @@ export class E2bSandboxSession implements SandboxSession {
     let files = 0;
     const walk = async (dir: string) => {
       for (const name of readdirSync(dir)) {
-        if (name === "node_modules" || name === ".git" || name === ".sora-browser-profile") {
+        if (
+          name === "node_modules" ||
+          name === ".git" ||
+          name === ".sora-browser-profile"
+        ) {
           continue;
         }
         const full = join(dir, name);
@@ -102,8 +113,10 @@ export class E2bSandboxSession implements SandboxSession {
           await walk(full);
           continue;
         }
-        // Skip large binaries by extension for cost/perf
-        if (/\.(png|jpg|jpeg|gif|webp|mp4|zip|exe|dll)$/i.test(name) && st.size > 2_000_000) {
+        if (
+          /\.(png|jpg|jpeg|gif|webp|mp4|zip|exe|dll)$/i.test(name) &&
+          st.size > 2_000_000
+        ) {
           continue;
         }
         const rel = relative(localRoot, full).split(sep).join("/");
@@ -122,12 +135,12 @@ export class E2bSandboxSession implements SandboxSession {
 
   async syncToLocal(localRoot: string): Promise<{ files: number }> {
     const listed = await this.#handle.commands.run(
-      `find ${REMOTE_WORKSPACE} -type f 2>/dev/null | head -n 5000`,
+      `find ${REMOTE_WORKSPACE} -type f -size -2M 2>/dev/null | head -n 500`,
       { timeoutMs: 60_000 },
     );
     const paths = (listed.stdout || "")
       .split("\n")
-      .map((l) => l.trim())
+      .map((p) => p.trim())
       .filter(Boolean);
     let files = 0;
     for (const remote of paths) {
@@ -141,7 +154,7 @@ export class E2bSandboxSession implements SandboxSession {
         writeFileSync(dest, content, "utf8");
         files += 1;
       } catch {
-        // skip unreadable
+        /* skip binary / missing */
       }
     }
     return { files };
@@ -151,39 +164,74 @@ export class E2bSandboxSession implements SandboxSession {
     await this.#handle.setTimeout(this.#timeoutMs);
   }
 
+  async ensureStream(): Promise<{ url: string }> {
+    if (!this.#streamStarted) {
+      await this.#handle.stream.start({ requireAuth: true });
+      this.#streamStarted = true;
+      const authKey = this.#handle.stream.getAuthKey();
+      this.#streamUrl = this.#handle.stream.getUrl({ authKey });
+    }
+    if (!this.#streamUrl) {
+      throw new Error("Desktop stream URL unavailable");
+    }
+    return { url: this.#streamUrl };
+  }
+
+  async screenshotDesktop(): Promise<Uint8Array> {
+    return this.#handle.screenshot("bytes");
+  }
+
+  async getStreamUrl(): Promise<{ url: string } | null> {
+    try {
+      return await this.ensureStream();
+    } catch {
+      return null;
+    }
+  }
+
   async dispose(): Promise<void> {
+    if (this.#streamStarted) {
+      await this.#handle.stream.stop().catch(() => {});
+    }
     await this.#handle.kill().catch(() => {});
   }
 }
 
-export class E2bSandboxProvider implements SandboxProvider {
-  readonly id = "e2b";
+export class E2bDesktopProvider implements SandboxProvider {
+  readonly id = "e2b-desktop";
   readonly capabilities = {
     shell: true,
     files: true,
-    desktop: false,
+    desktop: true,
   } as const;
 
   async create(options: SandboxCreateOptions): Promise<SandboxSession> {
     const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     let Sandbox: {
-      create: (opts: Record<string, unknown>) => Promise<E2bSandboxHandle>;
+      create: (opts?: Record<string, unknown>) => Promise<DesktopHandle>;
     };
     try {
-      const mod = await import("e2b");
+      const mod = await import("@e2b/desktop");
       Sandbox = (mod as { Sandbox: typeof Sandbox }).Sandbox;
     } catch {
       throw new Error(
-        "E2B SDK not installed. Run: bun add e2b  (or disable sandbox in Settings)",
+        "E2B Desktop SDK missing. Run: bun add @e2b/desktop — or use Secure cloud (lean shell) instead.",
       );
     }
 
-    // Never pass host process.env — empty envs; secrets stay on host.
+    if (!options.apiKey) {
+      throw new Error(
+        "Cloud desktop needs an E2B key. Add it under Connections.",
+      );
+    }
+
     const handle = await Sandbox.create({
       apiKey: options.apiKey,
       timeoutMs,
+      resolution: [1280, 720],
       metadata: {
         product: "sora",
+        mode: "desktop",
         ...(options.metadata ?? {}),
       },
       envs: {},
@@ -193,24 +241,11 @@ export class E2bSandboxProvider implements SandboxProvider {
       timeoutMs: 30_000,
     });
 
-    return new E2bSandboxSession(handle, [options.apiKey], timeoutMs);
+    return new E2bDesktopSession(handle, [options.apiKey], timeoutMs);
   }
 }
 
-export function resolveE2bApiKey(
-  secrets?: { providers?: Record<string, { apiKey?: string }> },
-): string | null {
-  return (
-    secrets?.providers?.e2b?.apiKey?.trim() ||
-    process.env.E2B_API_KEY?.trim() ||
-    null
-  );
-}
-
-function filterSandboxEnv(
-  env?: Record<string, string>,
-): Record<string, string> {
-  // Never merge host process.env into the microVM.
+function filterEnv(env?: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
   if (!env) return out;
   for (const [key, value] of Object.entries(env)) {

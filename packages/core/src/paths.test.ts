@@ -48,7 +48,7 @@ describe("SoraRuntime", () => {
   test("init creates config and database", () => {
     const runtime = new SoraRuntime({ home });
     const config = runtime.init();
-    expect(config.defaultModel).toBe("mock:echo");
+    expect(config.defaultModel).toBe("openrouter:openai/gpt-4o-mini");
     expect(runtime.isInitialized).toBe(true);
     expect(runtime.db.query("SELECT count(*) as c FROM meta").get()).toEqual({
       c: 1,

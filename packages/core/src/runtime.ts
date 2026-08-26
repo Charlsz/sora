@@ -108,7 +108,10 @@ export class SoraRuntime {
 
   updateConfig(
     patch: Partial<
-      Pick<SoraConfig, "defaultModel" | "browser" | "sandbox" | "computer">
+      Pick<
+        SoraConfig,
+        "defaultModel" | "browser" | "sandbox" | "computer" | "displayName"
+      >
     >,
   ): SoraConfig {
     this.ensureInitialized();

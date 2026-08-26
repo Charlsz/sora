@@ -22,6 +22,10 @@ export {
 } from "./cloud/sandbox-computer.ts";
 export { E2bSandboxProvider, E2bSandboxSession } from "./cloud/e2b-provider.ts";
 export {
+  E2bDesktopProvider,
+  E2bDesktopSession,
+} from "./cloud/e2b-desktop-provider.ts";
+export {
   DockerSandboxProvider,
   DockerSandboxSession,
 } from "./cloud/docker-provider.ts";

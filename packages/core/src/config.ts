@@ -50,6 +50,11 @@ export type SandboxConfig = {
 export type SoraConfig = {
   version: number;
   defaultModel: string;
+  /**
+   * Local display name for the human user (not an account).
+   * Stored only in ~/.sora/config.json.
+   */
+  displayName?: string;
   /** Local Playwright when computer.provider is local. */
   browser?: "on" | "off";
   /**
@@ -67,16 +72,17 @@ export type SoraConfig = {
 };
 
 export const DEFAULT_COMPUTER: ComputerConfig = {
-  provider: "local",
+  provider: "e2b",
   failClosed: true,
   idleMs: 600_000,
   commandTimeoutMs: 120_000,
+  /** Full cloud desktop VM — each bot gets an isolated sandbox computer. */
   preferDisplay: true,
 };
 
 export const DEFAULT_CONFIG: Omit<SoraConfig, "createdAt" | "updatedAt"> = {
   version: 1,
-  defaultModel: "mock:echo",
+  defaultModel: "openrouter:openai/gpt-4o-mini",
   browser: "on",
   computer: { ...DEFAULT_COMPUTER },
 };

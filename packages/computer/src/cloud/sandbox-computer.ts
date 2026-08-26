@@ -10,12 +10,14 @@ import {
 import type {
   Computer,
   ComputerCapabilities,
+  ComputerDisplay,
   ComputerProviderId,
   Terminal,
   TerminalOptions,
   TerminalResult,
 } from "../types.ts";
 import { E2bSandboxProvider, resolveE2bApiKey } from "./e2b-provider.ts";
+import { E2bDesktopProvider } from "./e2b-desktop-provider.ts";
 import { DockerSandboxProvider } from "./docker-provider.ts";
 import { FakeSandboxProvider } from "./fake-provider.ts";
 import type { SandboxProvider, SandboxSession } from "./types.ts";
@@ -29,7 +31,7 @@ export type SandboxComputerOptions = LocalComputerOptions & {
 
 /**
  * Non-local Computer backend: terminal (+ synced files) on a remote provider.
- * Browser may stay local until a full desktop provider is wired.
+ * With preferDisplay + e2b, uses full desktop stream (@e2b/desktop).
  * Fail-closed: never silently use the host shell when this Computer is selected.
  */
 export class SandboxComputer implements Computer {
@@ -38,6 +40,7 @@ export class SandboxComputer implements Computer {
   readonly #sessionBackend: SandboxProvider;
   readonly #failClosed: boolean;
   readonly #idleMs: number;
+  readonly #preferDisplay: boolean;
   #session: SandboxSession | null = null;
   #sessionPromise: Promise<SandboxSession> | null = null;
   readonly kind = "cloud" as const;
@@ -53,13 +56,14 @@ export class SandboxComputer implements Computer {
       : computer.provider) as ComputerProviderId;
     this.#failClosed = computer.failClosed !== false;
     this.#idleMs = computer.idleMs ?? 600_000;
+    this.#preferDisplay = computer.preferDisplay !== false;
     this.#sessionBackend =
-      options.sandboxProvider ?? resolveProvider(this.provider);
+      options.sandboxProvider ??
+      resolveProvider(this.provider, this.#preferDisplay);
     this.capabilities = {
       filesystem: true,
       terminal: true,
       browser: true,
-      // Browser (and its display) stay on the host for lean sandboxes
       display: true,
       persistentProfile: true,
     };
@@ -81,8 +85,47 @@ export class SandboxComputer implements Computer {
     return this.#local.browser;
   }
 
-  get display() {
-    return this.#local.display;
+  get display(): ComputerDisplay {
+    if (this.#sessionBackend.capabilities.desktop) {
+      return {
+        snapshot: async () => {
+          const session = await this.#ensureSession();
+          await session.keepAlive().catch(() => {});
+          const stream = await session.getStreamUrl?.();
+          let base64: string | undefined;
+          try {
+            const bytes = await session.screenshotDesktop?.();
+            if (bytes && bytes.length > 0) {
+              base64 = Buffer.from(bytes).toString("base64");
+            }
+          } catch {
+            /* stream-only is fine */
+          }
+          return {
+            base64,
+            streamUrl: stream?.url,
+            width: 1280,
+            height: 720,
+            updatedAt: new Date().toISOString(),
+          };
+        },
+        requestTakeover: async () => {
+          const session = await this.#ensureSession();
+          const stream = await session.getStreamUrl?.();
+          if (!stream?.url) {
+            return {
+              ok: false,
+              message: "Desktop stream is not available yet.",
+            };
+          }
+          return {
+            ok: true,
+            message: stream.url,
+          };
+        },
+      };
+    }
+    return this.#local.display!;
   }
 
   get terminal(): Terminal {
@@ -122,7 +165,8 @@ export class SandboxComputer implements Computer {
     if (this.#sessionPromise) return this.#sessionPromise;
 
     this.#sessionPromise = (async () => {
-      const needsKey = this.#sessionBackend.id !== "docker" &&
+      const needsKey =
+        this.#sessionBackend.id !== "docker" &&
         this.#sessionBackend.id !== "fake";
       const apiKey = resolveApiKey(
         this.#sessionBackend.id,
@@ -173,7 +217,10 @@ export function createAgentComputer(
   return new LocalComputer(options);
 }
 
-function resolveProvider(id: string): SandboxProvider {
+function resolveProvider(
+  id: string,
+  preferDisplay = true,
+): SandboxProvider {
   if (id === "fake") return new FakeSandboxProvider();
   if (id === "docker") return new DockerSandboxProvider();
   if (id === "daytona" || id === "remote" || id === "host") {
@@ -181,7 +228,11 @@ function resolveProvider(id: string): SandboxProvider {
       `Computer provider "${id}" is not implemented yet. Use "local", "e2b", or "docker".`,
     );
   }
-  return new E2bSandboxProvider();
+  // e2b + preferDisplay → full GUI desktop; preferDisplay:false → lean code sandbox
+  if (id === "e2b" || id === "e2b-desktop") {
+    return preferDisplay ? new E2bDesktopProvider() : new E2bSandboxProvider();
+  }
+  return preferDisplay ? new E2bDesktopProvider() : new E2bSandboxProvider();
 }
 
 function resolveApiKey(
@@ -190,7 +241,9 @@ function resolveApiKey(
 ): string | null {
   if (providerId === "fake") return "fake-key";
   if (providerId === "docker") return "docker-local";
-  if (providerId === "e2b") return resolveE2bApiKey(secrets);
+  if (providerId === "e2b" || providerId === "e2b-desktop") {
+    return resolveE2bApiKey(secrets);
+  }
   return (
     secrets?.providers?.[providerId]?.apiKey?.trim() ||
     process.env[`${providerId.toUpperCase()}_API_KEY`]?.trim() ||

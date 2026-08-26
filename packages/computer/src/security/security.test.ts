@@ -6,6 +6,7 @@ import {
   buildSafeProcessEnv,
   createAgentComputer,
   FakeSandboxProvider,
+  FakeSandboxSession,
   isForbiddenEnvKey,
   scrubSecretsFromText,
   SandboxComputer,
@@ -72,7 +73,7 @@ describe("sandbox computer fail-closed", () => {
     }
   });
 
-  test("createAgentComputer stays local when sandbox off", () => {
+  test("createAgentComputer stays local when explicitly configured", () => {
     const root = mkdtempSync(join(tmpdir(), "sora-local-"));
     try {
       const computer = createAgentComputer({
@@ -80,6 +81,7 @@ describe("sandbox computer fail-closed", () => {
         config: {
           version: 1,
           defaultModel: "mock:echo",
+          computer: { provider: "local", failClosed: true },
           sandbox: { enabled: false, provider: "local" },
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
@@ -139,6 +141,58 @@ describe("sandbox computer fail-closed", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  test("desktop-capable sandbox exposes stream takeover", async () => {
+    const root = mkdtempSync(join(tmpdir(), "sora-desk-"));
+    class DesktopFakeSession extends FakeSandboxSession {
+      constructor() {
+        super(undefined, true);
+      }
+      async getStreamUrl() {
+        return { url: "https://example.test/desktop-stream" };
+      }
+      async screenshotDesktop() {
+        return new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+      }
+    }
+    class DesktopFakeProvider extends FakeSandboxProvider {
+      readonly id = "fake";
+      readonly capabilities = {
+        shell: true,
+        files: true,
+        desktop: true,
+      } as const;
+      async create() {
+        return new DesktopFakeSession();
+      }
+    }
+    try {
+      const computer = new SandboxComputer({
+        workspaceRoot: root,
+        config: {
+          version: 1,
+          defaultModel: "mock:echo",
+          computer: {
+            provider: "e2b",
+            preferDisplay: true,
+            failClosed: true,
+          },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        sandboxProvider: new DesktopFakeProvider(),
+      });
+      const frame = await computer.display.snapshot();
+      expect(frame?.streamUrl).toBe("https://example.test/desktop-stream");
+      expect(frame?.base64).toBeTruthy();
+      const takeover = await computer.display.requestTakeover?.();
+      expect(takeover?.ok).toBe(true);
+      expect(takeover?.message).toContain("desktop-stream");
+      await computer.dispose();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("local terminal does not expose API keys", () => {
@@ -151,6 +205,7 @@ describe("local terminal does not expose API keys", () => {
         config: {
           version: 1,
           defaultModel: "mock:echo",
+          computer: { provider: "local", failClosed: true },
           sandbox: { enabled: false, provider: "local" },
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),

@@ -41,6 +41,10 @@ export interface SandboxSession {
   /** Extend idle TTL (call around agent activity). */
   keepAlive(): Promise<void>;
   dispose(): Promise<void>;
+  /** Live desktop stream (E2B Desktop / noVNC). */
+  getStreamUrl?(): Promise<{ url: string } | null>;
+  /** Full-desktop PNG bytes for Watch. */
+  screenshotDesktop?(): Promise<Uint8Array | null>;
 }
 
 export interface SandboxProvider {

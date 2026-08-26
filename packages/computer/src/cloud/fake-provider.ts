@@ -17,12 +17,15 @@ export class FakeSandboxSession implements SandboxSession {
   readonly info: SandboxSessionInfo;
   #files = new Map<string, string>();
 
-  constructor(id = `fake_${crypto.randomUUID().slice(0, 8)}`) {
+  constructor(
+    id = `fake_${crypto.randomUUID().slice(0, 8)}`,
+    desktop = false,
+  ) {
     this.info = {
       id,
       provider: "fake",
       remoteWorkspace: "/home/user/workspace",
-      capabilities: { shell: true, files: true, desktop: false },
+      capabilities: { shell: true, files: true, desktop },
     };
   }
 
