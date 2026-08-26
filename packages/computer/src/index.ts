@@ -21,6 +21,10 @@ export {
   resolveE2bApiKey,
 } from "./cloud/sandbox-computer.ts";
 export { E2bSandboxProvider, E2bSandboxSession } from "./cloud/e2b-provider.ts";
+export {
+  DockerSandboxProvider,
+  DockerSandboxSession,
+} from "./cloud/docker-provider.ts";
 export { FakeSandboxProvider, FakeSandboxSession } from "./cloud/fake-provider.ts";
 export type {
   SandboxCapabilities,

@@ -1,48 +1,68 @@
-import type { SoraConfig } from "@sora/core";
+import {
+  resolveComputerConfig,
+  type SoraConfig,
+} from "@sora/core";
 import { LocalComputer, type LocalComputerOptions } from "../local.ts";
 import {
   collectSecretValues,
   scrubSecretsFromText,
 } from "../security/env.ts";
-import type { Computer, Terminal, TerminalOptions, TerminalResult } from "../types.ts";
+import type {
+  Computer,
+  ComputerCapabilities,
+  ComputerProviderId,
+  Terminal,
+  TerminalOptions,
+  TerminalResult,
+} from "../types.ts";
 import { E2bSandboxProvider, resolveE2bApiKey } from "./e2b-provider.ts";
+import { DockerSandboxProvider } from "./docker-provider.ts";
 import { FakeSandboxProvider } from "./fake-provider.ts";
 import type { SandboxProvider, SandboxSession } from "./types.ts";
 
 export type SandboxComputerOptions = LocalComputerOptions & {
   config: SoraConfig;
   secrets?: { providers?: Record<string, { apiKey?: string }> };
-  /** Test hook — inject a provider (e.g. FakeSandboxProvider). */
+  /** Test hook — inject a session provider (e.g. FakeSandboxProvider). */
   sandboxProvider?: SandboxProvider;
 };
 
 /**
- * Local-first computer with optional isolated cloud shell+files.
- *
- * Security (stricter than silent hybrid fallbacks):
- * - When sandbox is enabled, terminal NEVER falls back to the host shell.
- * - Provider API keys stay on the host; sandbox env is allowlisted/empty.
- * - Workspace is synced into the VM; browser stays local (cost/perf vs full desktop).
+ * Non-local Computer backend: terminal (+ synced files) on a remote provider.
+ * Browser may stay local until a full desktop provider is wired.
+ * Fail-closed: never silently use the host shell when this Computer is selected.
  */
 export class SandboxComputer implements Computer {
   readonly #local: LocalComputer;
   readonly #options: SandboxComputerOptions;
-  readonly #provider: SandboxProvider;
+  readonly #sessionBackend: SandboxProvider;
   readonly #failClosed: boolean;
   readonly #idleMs: number;
   #session: SandboxSession | null = null;
   #sessionPromise: Promise<SandboxSession> | null = null;
   readonly kind = "cloud" as const;
+  readonly provider: ComputerProviderId;
+  readonly capabilities: ComputerCapabilities;
 
   constructor(options: SandboxComputerOptions) {
     this.#local = new LocalComputer(options);
     this.#options = options;
-    const sandbox = options.config.sandbox;
-    this.#failClosed = sandbox?.failClosed !== false;
-    this.#idleMs = sandbox?.idleMs ?? 600_000;
-    this.#provider =
-      options.sandboxProvider ??
-      resolveProvider(sandbox?.provider ?? "e2b");
+    const computer = resolveComputerConfig(options.config);
+    this.provider = (computer.provider === "local"
+      ? "e2b"
+      : computer.provider) as ComputerProviderId;
+    this.#failClosed = computer.failClosed !== false;
+    this.#idleMs = computer.idleMs ?? 600_000;
+    this.#sessionBackend =
+      options.sandboxProvider ?? resolveProvider(this.provider);
+    this.capabilities = {
+      filesystem: true,
+      terminal: true,
+      browser: true,
+      // Browser (and its display) stay on the host for lean sandboxes
+      display: true,
+      persistentProfile: true,
+    };
   }
 
   get id(): string {
@@ -59,6 +79,10 @@ export class SandboxComputer implements Computer {
 
   get browser() {
     return this.#local.browser;
+  }
+
+  get display() {
+    return this.#local.display;
   }
 
   get terminal(): Terminal {
@@ -98,19 +122,24 @@ export class SandboxComputer implements Computer {
     if (this.#sessionPromise) return this.#sessionPromise;
 
     this.#sessionPromise = (async () => {
+      const needsKey = this.#sessionBackend.id !== "docker" &&
+        this.#sessionBackend.id !== "fake";
       const apiKey = resolveApiKey(
-        this.#provider.id,
+        this.#sessionBackend.id,
         this.#options.secrets,
       );
-      if (!apiKey) {
-        const msg = `Sandbox provider "${this.#provider.id}" requires an API key. Add it in Settings (or set the env var). Host shell fallback is disabled for security.`;
-        if (this.#failClosed) throw new Error(msg);
-        throw new Error(msg);
+      if (needsKey && !apiKey) {
+        throw new Error(
+          `Computer provider "${this.#sessionBackend.id}" requires an API key. Add it in Settings. Host shell fallback is disabled.`,
+        );
       }
-      const session = await this.#provider.create({
-        apiKey,
+      const session = await this.#sessionBackend.create({
+        apiKey: apiKey ?? undefined,
         timeoutMs: this.#idleMs,
-        metadata: { agent: this.id },
+        metadata: {
+          agent: this.id,
+          localRoot: this.workspaceRoot,
+        },
       });
       this.#session = session;
       return session;
@@ -137,8 +166,8 @@ export class SandboxComputer implements Computer {
 export function createAgentComputer(
   options: SandboxComputerOptions,
 ): Computer {
-  const sandbox = options.config.sandbox;
-  if (sandbox?.enabled && sandbox.provider !== "local") {
+  const computer = resolveComputerConfig(options.config);
+  if (computer.provider !== "local") {
     return new SandboxComputer(options);
   }
   return new LocalComputer(options);
@@ -146,9 +175,10 @@ export function createAgentComputer(
 
 function resolveProvider(id: string): SandboxProvider {
   if (id === "fake") return new FakeSandboxProvider();
-  if (id === "daytona") {
+  if (id === "docker") return new DockerSandboxProvider();
+  if (id === "daytona" || id === "remote" || id === "host") {
     throw new Error(
-      "Daytona sandbox is not implemented yet. Use provider \"e2b\" or local.",
+      `Computer provider "${id}" is not implemented yet. Use "local", "e2b", or "docker".`,
     );
   }
   return new E2bSandboxProvider();
@@ -159,6 +189,7 @@ function resolveApiKey(
   secrets?: { providers?: Record<string, { apiKey?: string }> },
 ): string | null {
   if (providerId === "fake") return "fake-key";
+  if (providerId === "docker") return "docker-local";
   if (providerId === "e2b") return resolveE2bApiKey(secrets);
   return (
     secrets?.providers?.[providerId]?.apiKey?.trim() ||
@@ -173,5 +204,4 @@ function joinRemote(root: string, relative: string): string {
   return `${root.replace(/\/$/, "")}/${rel}`;
 }
 
-/** @deprecated use E2bSandboxProvider */
 export { resolveE2bApiKey } from "./e2b-provider.ts";

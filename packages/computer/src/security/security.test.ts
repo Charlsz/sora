@@ -86,6 +86,28 @@ describe("sandbox computer fail-closed", () => {
         },
       });
       expect(computer.kind).toBe("local");
+      expect(computer.provider).toBe("local");
+      expect(computer.capabilities.display).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("docker computer is selected without falling back to local", () => {
+    const root = mkdtempSync(join(tmpdir(), "sora-docker-"));
+    try {
+      const computer = createAgentComputer({
+        workspaceRoot: root,
+        config: {
+          version: 1,
+          defaultModel: "mock:echo",
+          computer: { provider: "docker", failClosed: true },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      });
+      expect(computer.provider).toBe("docker");
+      expect(computer.kind).toBe("cloud");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

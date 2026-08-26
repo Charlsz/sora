@@ -16,7 +16,7 @@ const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
  * Bridges PermissionGate "ask" decisions to the HTTP/SSE API so the UI
  * (ApprovalCard) can allow or deny privileged actions.
  *
- * Inspired by OpenMausBot's permission broker: session remembers + timeouts
+ * Permission broker: session remembers + timeouts
  * so runs never hang forever.
  */
 export class PermissionAskBridge {

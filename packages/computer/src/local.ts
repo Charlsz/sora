@@ -2,7 +2,16 @@ import { join } from "node:path";
 import { createBrowser, PlaceholderBrowser } from "./browser.ts";
 import { LocalFilesystem } from "./filesystem.ts";
 import { LocalTerminal } from "./terminal.ts";
-import type { Browser, Computer, Filesystem, Terminal } from "./types.ts";
+import type {
+  Browser,
+  Computer,
+  ComputerCapabilities,
+  ComputerDisplay,
+  ComputerDisplayFrame,
+  ComputerProviderId,
+  Filesystem,
+  Terminal,
+} from "./types.ts";
 
 export type LocalComputerOptions = {
   id?: string;
@@ -12,13 +21,38 @@ export type LocalComputerOptions = {
   browser?: Browser;
 };
 
+/** Local headed/Playwright window — user can watch on the same machine. */
+class LocalComputerDisplay implements ComputerDisplay {
+  constructor(private readonly browser: Browser) {}
+
+  async snapshot(): Promise<ComputerDisplayFrame | null> {
+    const shot = await this.browser.screenshot({});
+    if (!shot.ok || !shot.base64) return null;
+    return {
+      base64: shot.base64,
+      width: shot.width,
+      height: shot.height,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+}
+
 export class LocalComputer implements Computer {
   readonly id: string;
   readonly kind = "local" as const;
+  readonly provider: ComputerProviderId = "local";
   readonly workspaceRoot: string;
+  readonly capabilities: ComputerCapabilities = {
+    filesystem: true,
+    terminal: true,
+    browser: true,
+    display: true,
+    persistentProfile: true,
+  };
   readonly filesystem: Filesystem;
   readonly terminal: Terminal;
   readonly browser: Browser;
+  readonly display: ComputerDisplay;
 
   constructor(options: LocalComputerOptions) {
     this.id = options.id ?? `local:${options.workspaceRoot}`;
@@ -34,6 +68,7 @@ export class LocalComputer implements Computer {
           options.browserProfileDir ??
           join(options.workspaceRoot, ".sora-browser-profile"),
       });
+    this.display = new LocalComputerDisplay(this.browser);
   }
 
   async dispose(): Promise<void> {

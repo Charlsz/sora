@@ -1,5 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { createDefaultConfig, DEFAULT_CONFIG, type SoraConfig } from "./config.ts";
+import {
+  createDefaultConfig,
+  resolveComputerConfig,
+  type SoraConfig,
+} from "./config.ts";
 import { openDatabase, type SoraDatabase } from "./db.ts";
 import { EventBus } from "./events.ts";
 import { getPaths, type SoraPaths } from "./paths.ts";
@@ -104,18 +108,57 @@ export class SoraRuntime {
 
   updateConfig(
     patch: Partial<
-      Pick<SoraConfig, "defaultModel" | "browser" | "sandbox">
+      Pick<SoraConfig, "defaultModel" | "browser" | "sandbox" | "computer">
     >,
   ): SoraConfig {
     this.ensureInitialized();
     const next: SoraConfig = {
       ...this.config,
       ...patch,
+      computer: patch.computer
+        ? {
+            ...resolveComputerConfig(this.config),
+            ...patch.computer,
+          }
+        : patch.sandbox
+          ? resolveComputerConfig({
+              ...this.config,
+              sandbox: {
+                ...(this.config.sandbox ?? {
+                  enabled: false,
+                  provider: "local",
+                }),
+                ...patch.sandbox,
+              },
+            })
+          : this.config.computer ?? resolveComputerConfig(this.config),
       sandbox: patch.sandbox
-        ? { ...(this.config.sandbox ?? DEFAULT_CONFIG.sandbox!), ...patch.sandbox }
+        ? {
+            enabled: patch.sandbox.enabled ?? this.config.sandbox?.enabled ?? false,
+            provider:
+              patch.sandbox.provider ??
+              this.config.sandbox?.provider ??
+              "local",
+            failClosed:
+              patch.sandbox.failClosed ?? this.config.sandbox?.failClosed,
+            idleMs: patch.sandbox.idleMs ?? this.config.sandbox?.idleMs,
+            commandTimeoutMs:
+              patch.sandbox.commandTimeoutMs ??
+              this.config.sandbox?.commandTimeoutMs,
+          }
         : this.config.sandbox,
       updatedAt: new Date().toISOString(),
     };
+    // Keep computer + legacy sandbox in sync when either is patched
+    if (patch.computer && !patch.sandbox) {
+      next.sandbox = {
+        enabled: next.computer!.provider !== "local",
+        provider: next.computer!.provider,
+        failClosed: next.computer!.failClosed,
+        idleMs: next.computer!.idleMs,
+        commandTimeoutMs: next.computer!.commandTimeoutMs,
+      };
+    }
     writeFileSync(this.paths.config, JSON.stringify(next, null, 2) + "\n");
     this.#config = next;
     this.#applyBrowserMode(next.browser);

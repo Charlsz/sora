@@ -303,6 +303,17 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
           return json(run, cors);
         }
 
+        const wfRuns = /^\/api\/workflows\/([^/]+)\/runs$/.exec(url.pathname);
+        if (wfRuns && req.method === "GET") {
+          const slug = decodeURIComponent(wfRuns[1]!);
+          const wf = services.workflows.requireBySlug(slug);
+          const limit = Math.min(
+            50,
+            Math.max(1, Number(url.searchParams.get("limit") ?? "20") || 20),
+          );
+          return json(services.workflows.listRuns(wf.id, limit), cors);
+        }
+
         const wfMatch = /^\/api\/workflows\/([^/]+)$/.exec(url.pathname);
         if (wfMatch && req.method === "PATCH") {
           const slug = decodeURIComponent(wfMatch[1]!);
@@ -807,7 +818,34 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
               agentSlug: agent.slug,
               workspaceRoot: computer.workspaceRoot,
               kind: computer.kind,
+              provider: computer.provider,
+              capabilities: computer.capabilities,
               browser: computer.browser.status(),
+            },
+            cors,
+          );
+        }
+
+        const displayMatch =
+          /^\/api\/agents\/([^/]+)\/computer\/display$/.exec(url.pathname);
+        if (displayMatch && req.method === "GET") {
+          const slug = decodeURIComponent(displayMatch[1]!);
+          const agent = services.agents.requireBySlugOrName(slug);
+          await services.permissions.assert({
+            agentId: agent.id,
+            agentSlug: agent.slug,
+            action: "browser.screenshot",
+            resource: "viewport",
+          });
+          const computer = services.runner.getComputer(agent);
+          const frame = computer.display
+            ? await computer.display.snapshot()
+            : null;
+          return json(
+            {
+              ok: Boolean(frame),
+              watching: Boolean(computer.capabilities.display),
+              frame,
             },
             cors,
           );
@@ -854,13 +892,16 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
         }
 
         if (url.pathname === "/api/config" && req.method === "GET") {
+          const { resolveComputerConfig } = await import("@sora/core");
+          const computer = resolveComputerConfig(services.runtime.config);
           return json(
             {
               defaultModel: services.runtime.config.defaultModel,
               browser: services.runtime.config.browser ?? "on",
+              computer,
               sandbox: services.runtime.config.sandbox ?? {
-                enabled: false,
-                provider: "local",
+                enabled: computer.provider !== "local",
+                provider: computer.provider,
               },
               home: services.runtime.paths.home,
             },
@@ -872,6 +913,13 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
           const body = (await req.json()) as {
             defaultModel?: string;
             browser?: "on" | "off";
+            computer?: {
+              provider?: string;
+              failClosed?: boolean;
+              idleMs?: number;
+              commandTimeoutMs?: number;
+              preferDisplay?: boolean;
+            };
             sandbox?: {
               enabled?: boolean;
               provider?: "local" | "e2b" | "daytona" | "fake";
@@ -880,9 +928,24 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
               commandTimeoutMs?: number;
             };
           };
+          type ComputerProvider =
+            | "local"
+            | "e2b"
+            | "daytona"
+            | "fake"
+            | "docker"
+            | "remote"
+            | "host";
           const patch: {
             defaultModel?: string;
             browser?: "on" | "off";
+            computer?: {
+              provider: ComputerProvider;
+              failClosed?: boolean;
+              idleMs?: number;
+              commandTimeoutMs?: number;
+              preferDisplay?: boolean;
+            };
             sandbox?: {
               enabled: boolean;
               provider: "local" | "e2b" | "daytona" | "fake";
@@ -913,7 +976,18 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
             patch.browser = body.browser;
           }
 
-          if (body.sandbox) {
+          if (body.computer?.provider) {
+            const { resolveComputerConfig } = await import("@sora/core");
+            const prev = resolveComputerConfig(services.runtime.config);
+            patch.computer = {
+              provider: body.computer.provider as ComputerProvider,
+              failClosed: body.computer.failClosed ?? prev.failClosed,
+              idleMs: body.computer.idleMs ?? prev.idleMs,
+              commandTimeoutMs:
+                body.computer.commandTimeoutMs ?? prev.commandTimeoutMs,
+              preferDisplay: body.computer.preferDisplay ?? prev.preferDisplay,
+            };
+          } else if (body.sandbox) {
             const prev = services.runtime.config.sandbox ?? {
               enabled: false,
               provider: "local" as const,
@@ -933,20 +1007,34 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
             };
           }
 
-          if (!patch.defaultModel && !patch.browser && !patch.sandbox) {
+          if (
+            !patch.defaultModel &&
+            !patch.browser &&
+            !patch.sandbox &&
+            !patch.computer
+          ) {
             return json(
-              { error: "defaultModel, browser, or sandbox is required" },
+              {
+                error:
+                  "defaultModel, browser, computer, or sandbox is required",
+              },
               cors,
               400,
             );
           }
 
           const config = services.runtime.updateConfig(patch);
+          const { resolveComputerConfig } = await import("@sora/core");
+          const computer = resolveComputerConfig(config);
           return json(
             {
               defaultModel: config.defaultModel,
               browser: config.browser ?? "on",
-              sandbox: config.sandbox ?? { enabled: false, provider: "local" },
+              computer,
+              sandbox: config.sandbox ?? {
+                enabled: computer.provider !== "local",
+                provider: computer.provider,
+              },
             },
             cors,
           );

@@ -108,9 +108,16 @@ describe("api providers", () => {
     server = startApiServer({ services, port: 0 });
   });
 
-  afterAll(() => {
+  afterAll(async () => {
     server.stop();
-    rmSync(home, { recursive: true, force: true });
+    for (let i = 0; i < 10; i++) {
+      try {
+        rmSync(home, { recursive: true, force: true });
+        return;
+      } catch {
+        await Bun.sleep(50);
+      }
+    }
   });
 
   test("list providers and set default model to mock", async () => {
@@ -231,5 +238,47 @@ describe("api providers", () => {
       method: "DELETE",
     });
     expect(deleted.ok).toBe(true);
+  });
+
+  test("workflow runs history and computer display endpoints", async () => {
+    const agentRes = await fetch(`${server.url}/api/agents`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "HistoryBot" }),
+    });
+    expect(agentRes.ok).toBe(true);
+    const agent = (await agentRes.json()) as { slug: string };
+
+    const created = await fetch(`${server.url}/api/workflows`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "history-routine",
+        agent: agent.slug,
+        task: "reply ok",
+      }),
+    });
+    expect(created.ok).toBe(true);
+    const wf = (await created.json()) as { slug: string };
+
+    const runRes = await fetch(`${server.url}/api/workflows/${wf.slug}/run`, {
+      method: "POST",
+    });
+    expect(runRes.ok).toBe(true);
+
+    const runsRes = await fetch(`${server.url}/api/workflows/${wf.slug}/runs`);
+    expect(runsRes.ok).toBe(true);
+    const runs = (await runsRes.json()) as Array<{ status: string }>;
+    expect(runs.length).toBeGreaterThan(0);
+
+    const display = await fetch(
+      `${server.url}/api/agents/${agent.slug}/computer/display`,
+    );
+    expect(display.ok).toBe(true);
+    const body = (await display.json()) as {
+      watching: boolean;
+      frame: unknown;
+    };
+    expect(typeof body.watching).toBe("boolean");
   });
 });

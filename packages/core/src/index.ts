@@ -1,4 +1,13 @@
-export { createDefaultConfig, DEFAULT_CONFIG, type SoraConfig } from "./config.ts";
+export {
+  createDefaultConfig,
+  DEFAULT_COMPUTER,
+  DEFAULT_CONFIG,
+  resolveComputerConfig,
+  type ComputerConfig,
+  type ComputerProviderId,
+  type SandboxConfig,
+  type SoraConfig,
+} from "./config.ts";
 export { openDatabase, type SoraDatabase } from "./db.ts";
 export {
   createEventId,
@@ -28,6 +37,9 @@ export { SoraRuntime, type RuntimeOptions } from "./runtime.ts";
 export {
   EMPTY_SECRETS,
   KNOWN_PROVIDERS,
+  decryptSecrets,
+  encryptSecrets,
+  encryptionKeyFromEnv,
   loadSecrets,
   maskSecret,
   saveSecrets,

@@ -33,7 +33,7 @@ type E2bSandboxHandle = {
 
 /**
  * E2B code sandbox (Firecracker microVM) — not E2B Desktop.
- * Cheaper and smaller than Rakazo's full GUI computer; browser stays on the host.
+ * Lean code sandbox (shell + files); browser stays on the host until a desktop provider ships.
  */
 export class E2bSandboxSession implements SandboxSession {
   readonly info: SandboxSessionInfo;

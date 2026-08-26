@@ -1,14 +1,14 @@
 import type { TerminalOptions, TerminalResult } from "../types.ts";
 
 /**
- * Lean sandbox contract (vs Rakazo full desktop computer).
+ * Lean sandbox contract (shell + files; not a full GUI desktop).
  * Sora default: isolated shell + files in a microVM; browser stays local.
  * Provider API keys stay on the host — never injected into the sandbox env.
  */
 export type SandboxCapabilities = {
   shell: boolean;
   files: boolean;
-  /** Full GUI desktop (E2B Desktop / Box) — not required for v1. */
+  /** Full GUI desktop stream — not required for v1 lean sandbox. */
   desktop: boolean;
 };
 
@@ -22,10 +22,10 @@ export type SandboxSessionInfo = {
 
 export type SandboxCreateOptions = {
   /** Host-only API key for the provider. Never forwarded into sandbox env. */
-  apiKey: string;
+  apiKey?: string;
   /** Idle timeout for the remote machine (cost control). */
   timeoutMs?: number;
-  /** Metadata for provider dashboards. */
+  /** Metadata for provider dashboards / local paths. */
   metadata?: Record<string, string>;
 };
 

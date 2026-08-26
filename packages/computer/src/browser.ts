@@ -84,7 +84,7 @@ type Page = import("playwright").Page;
 
 /**
  * Persistent Chromium session via Playwright.
- * Free local alternative to hosted VMs (Box) / cloud computer-use fleets.
+ * Local Playwright browser — no cloud desktop required.
  */
 export class LocalBrowser implements Browser {
   readonly profileDir: string;

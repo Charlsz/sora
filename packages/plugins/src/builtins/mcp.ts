@@ -16,7 +16,7 @@ let cached: Tool[] = [];
 let lastCount = 0;
 
 /**
- * User-installed MCP servers (stdio). Same idea as Rakazo integrations,
+ * User-installed MCP servers (stdio). External tool integrations,
  * local-first — config in ~/.sora/mcp.json, no cloud account required.
  */
 export const mcpPlugin: SoraPlugin = {
