@@ -1,6 +1,8 @@
 import { useRef, useState } from "react";
 import {
+  DEFAULT_WALLPAPER_URL,
   fileToWallpaperDataUrl,
+  restoreDefaultWallpaper,
   type ThemeMode,
 } from "../appearance";
 
@@ -18,6 +20,7 @@ export default function AppearanceSettings({
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const usingDefault = wallpaper === DEFAULT_WALLPAPER_URL;
 
   async function onFile(file: File | null) {
     if (!file) return;
@@ -49,8 +52,25 @@ export default function AppearanceSettings({
           onClick={() => inputRef.current?.click()}
           className="rounded-control bg-ink px-3 py-1.5 text-[12.5px] font-medium text-surface disabled:opacity-50"
         >
-          {busy ? "Loading…" : wallpaper ? "Change wallpaper" : "Add wallpaper"}
+          {busy
+            ? "Loading…"
+            : wallpaper
+              ? "Change wallpaper"
+              : "Add wallpaper"}
         </button>
+        {wallpaper && !usingDefault && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              restoreDefaultWallpaper();
+              void onWallpaper(DEFAULT_WALLPAPER_URL);
+            }}
+            className="rounded-control bg-field px-3 py-1.5 text-[12.5px] font-medium text-ink-2 hover:bg-hover disabled:opacity-50"
+          >
+            Sora default
+          </button>
+        )}
         {wallpaper && (
           <button
             type="button"
@@ -59,6 +79,19 @@ export default function AppearanceSettings({
             className="rounded-control bg-field px-3 py-1.5 text-[12.5px] font-medium text-ink-2 hover:bg-hover disabled:opacity-50"
           >
             Remove
+          </button>
+        )}
+        {!wallpaper && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              restoreDefaultWallpaper();
+              void onWallpaper(DEFAULT_WALLPAPER_URL);
+            }}
+            className="rounded-control bg-field px-3 py-1.5 text-[12.5px] font-medium text-ink-2 hover:bg-hover disabled:opacity-50"
+          >
+            Sora default
           </button>
         )}
         <input

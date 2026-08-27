@@ -54,12 +54,14 @@ for (const dir of candidates) {
 
 console.log(`
 Smoke checklist (packaged app):
-  1. Launch → footer Runtime online
-  2. Onboarding → local name → keys or Skip
-  3. Chat → approval → Allow once
-  4. Workspace → Cloud desktop (needs E2B key) → Open desktop
-  5. Quit → sidecar stops
+  1. Launch → name
+  2. Model API key → E2B key
+  3. First teammate
+  4. Chat → Watch or Open
+  5. Allow once / Allow session / Deny when asked
+  6. Hide panel while Open → chat expands (no 380px trap)
+  7. Quit → sidecar stops
 
 Release: git tag v0.1.0 && git push origin v0.1.0
-  → CI drafts Win (NSIS/MSI) + Mac (DMG) on GitHub Releases
+  → CI runs bun test, then drafts Win (NSIS/MSI) + Mac (DMG) on GitHub Releases
 `);

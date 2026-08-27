@@ -1,7 +1,13 @@
+import defaultWallpaperUrl from "./assets/wallpaper-default.jpg";
+
 const WALLPAPER_KEY = "sora.wallpaper";
 const THEME_KEY = "sora.theme";
 const LEFT_PANEL_KEY = "sora.leftPanel";
 const RIGHT_PANEL_KEY = "sora.rightPanel";
+/** User cleared wallpaper; do not fall back to the bundled default. */
+const WALLPAPER_CLEARED = "none";
+
+export const DEFAULT_WALLPAPER_URL = defaultWallpaperUrl;
 
 export type ThemeMode = "light" | "dark" | "auto";
 
@@ -31,11 +37,12 @@ function writeBool(key: string, value: boolean): void {
 }
 
 export function loadAppearance(): AppearanceState {
-  let wallpaper: string | null = null;
+  let wallpaper: string | null = DEFAULT_WALLPAPER_URL;
   let theme: ThemeMode = "auto";
   try {
-    wallpaper = localStorage.getItem(WALLPAPER_KEY);
-    if (wallpaper && !wallpaper.startsWith("data:image/")) wallpaper = null;
+    const stored = localStorage.getItem(WALLPAPER_KEY);
+    if (stored === WALLPAPER_CLEARED) wallpaper = null;
+    else if (stored && stored.startsWith("data:image/")) wallpaper = stored;
     const t = localStorage.getItem(THEME_KEY);
     if (t === "light" || t === "dark" || t === "auto") theme = t;
   } catch {
@@ -51,12 +58,20 @@ export function loadAppearance(): AppearanceState {
 
 export function saveWallpaper(dataUrl: string | null): void {
   try {
-    if (!dataUrl) localStorage.removeItem(WALLPAPER_KEY);
+    if (!dataUrl) localStorage.setItem(WALLPAPER_KEY, WALLPAPER_CLEARED);
     else localStorage.setItem(WALLPAPER_KEY, dataUrl);
   } catch {
     throw new Error(
       "Couldn’t save that image locally (too large or storage blocked).",
     );
+  }
+}
+
+export function restoreDefaultWallpaper(): void {
+  try {
+    localStorage.removeItem(WALLPAPER_KEY);
+  } catch {
+    // ignore
   }
 }
 
@@ -76,8 +91,8 @@ export function saveRightPanelOpen(open: boolean): void {
   writeBool(RIGHT_PANEL_KEY, open);
 }
 
-/** Average luminance 0–1 from an image data URL (samples a downscaled canvas). */
-export function measureImageLuminance(dataUrl: string): Promise<number> {
+/** Average luminance 0 to 1 from an image URL or data URL. */
+export function measureImageLuminance(src: string): Promise<number> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
@@ -101,7 +116,6 @@ export function measureImageLuminance(dataUrl: string): Promise<number> {
           const r = data[i]! / 255;
           const g = data[i + 1]! / 255;
           const b = data[i + 2]! / 255;
-          // Rec. 709 relative luminance
           sum += 0.2126 * r + 0.7152 * g + 0.0722 * b;
           n++;
         }
@@ -111,7 +125,7 @@ export function measureImageLuminance(dataUrl: string): Promise<number> {
       }
     };
     img.onerror = () => reject(new Error("Couldn’t read image"));
-    img.src = dataUrl;
+    img.src = src;
   });
 }
 

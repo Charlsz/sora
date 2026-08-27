@@ -22,7 +22,7 @@ Honest status of Sora as an **open-source AI teammate workspace** (BYO models + 
 | Sign into tools on computer | **Working** (Open + Composio) | More connectors |
 | Approve risky actions | **Working** | — |
 | Multiple bots in parallel | **Working** | Chief-of-staff UX polish |
-| Routines (overnight jobs) | **Working** (cron/webhooks) | Demo capture → routine |
+| Routines (local cron) | **Working** while app is running | Demo capture → routine |
 | Save workflow from demo | **Partial** (tool-step replay) | Screen recording |
 | 24/7 while laptop closed | **Partial** | Hosted control plane |
 | Mobile messaging | **No** | Mobile app |

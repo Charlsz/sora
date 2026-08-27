@@ -71,8 +71,10 @@ CI can produce unsigned/ad-hoc builds. macOS notarization needs `APPLE_*` secret
 
 ## Smoke test (packaged)
 
-1. Launch the app → footer shows **Runtime online**.
-2. Onboarding → local name → keys or Skip.
-3. Chat → tool approval appears → Allow once.
-4. Workspace → Cloud desktop (E2B key) → Open desktop / Watch.
-5. Quit app → sidecar should stop if it was spawned by the app.
+1. Launch → your name.
+2. Model API key → E2B key.
+3. Create first teammate.
+4. Chat → **Watch** or **Open** the computer.
+5. When asked: **Allow once** / **Allow session** / **Deny**.
+6. With Open active, **Hide panel** → chat should expand (not stay at 380px).
+7. Quit → sidecar should stop if the app spawned it.

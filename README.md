@@ -1,10 +1,35 @@
 # Sora
 
-**AI teammates with a cloud computer.** Bring your own model subscription (OpenAI, Claude, Gemini, Grok, OpenRouter). No Sora account — you pay your providers directly.
+**AI teammates with a cloud computer. Your keys, no Sora account.**
 
-**Docs:** [docs/index.md](docs/index.md) · [overview](docs/overview.md)
+One named teammate, chat on the left, live sandbox on the right, Watch or Open on. Wallpaper behind the chrome. Bring your own keys (OpenAI / Claude / Gemini / Grok).
 
-## Quick start
+## Install (Win / Mac)
+
+Download the Windows or macOS installer from a `v*` draft release on GitHub:
+
+https://github.com/Charlsz/sora/releases
+
+Tag a version (`v0.1.0`, …) to build installers in CI.
+
+## First run
+
+1. Your name
+2. Model API key (OpenAI, Claude, Gemini, Grok, OpenRouter, …)
+3. E2B key (cloud computer)
+4. Create your first teammate
+5. Chat, then **Watch** or **Open** the computer
+6. When asked: **Allow once** / **Allow session** / **Deny**
+
+## What you get
+
+- Teammates you message like coworkers
+- Each runs in a **cloud sandbox VM** (browser, files, terminal, desktop)
+- **Watch** / **Open** the computer so you can sign in and approve when needed
+- Local schedules (cron) while the app is running
+- Keys stay on your machine (`~/.sora`)
+
+## From source
 
 ```bash
 bun install
@@ -12,24 +37,14 @@ bun run sora init
 bun run desktop
 ```
 
-Onboarding: **your name → AI key → cloud sandbox key → first teammate.**
-
-## What you get
-
-- Teammates you message like coworkers
-- Each runs in a **cloud sandbox VM** (browser, files, terminal, desktop)
-- **Watch** / **Open** the computer — sign into tools, approve when needed
-- Routines, multi-teammate handoffs, Composio connectors
-- Keys stay on your machine (`~/.sora`)
-
-## Develop
-
 ```bash
 bun test
-bun run desktop:package   # Win/Mac installers
+bun run desktop:package
 ```
 
-Tag `v*` for draft GitHub releases.
+## Docs
+
+[docs/index.md](docs/index.md) · [overview](docs/overview.md)
 
 ## License
 

@@ -10,8 +10,10 @@ import {
 } from "./api";
 import {
   applyDocumentTheme,
+  DEFAULT_WALLPAPER_URL,
   loadAppearance,
   measureImageLuminance,
+  restoreDefaultWallpaper,
   saveLeftPanelOpen,
   saveRightPanelOpen,
   saveTheme,
@@ -33,6 +35,7 @@ import SidebarNav, { teammateColor } from "./components/SidebarNav";
 import StreamingText from "./components/StreamingText";
 import MarkdownMessage from "./components/MarkdownMessage";
 import type { ToolRow } from "./components/ToolChips";
+import { isOpenDesktopLayout } from "./openLayout";
 
 type WorkerStatus = "idle" | "working" | "needs_you" | "done" | "failed";
 
@@ -717,7 +720,7 @@ export function App() {
 
       <main
         className={`flex min-h-0 flex-col bg-panel/85 backdrop-blur-md ${
-          computerOpen && vmControlUrl && showChatChrome
+          isOpenDesktopLayout(computerOpen, vmControlUrl, showChatChrome)
             ? "w-[380px] shrink-0 border-r border-line"
             : "min-w-0 flex-1"
         }`}
@@ -875,6 +878,16 @@ export function App() {
                 wallpaper={wallpaper}
                 theme={themeMode}
                 onWallpaper={async (dataUrl) => {
+                  if (!dataUrl) {
+                    saveWallpaper(null);
+                    setWallpaper(null);
+                    return;
+                  }
+                  if (dataUrl === DEFAULT_WALLPAPER_URL) {
+                    restoreDefaultWallpaper();
+                    setWallpaper(DEFAULT_WALLPAPER_URL);
+                    return;
+                  }
                   saveWallpaper(dataUrl);
                   setWallpaper(dataUrl);
                 }}

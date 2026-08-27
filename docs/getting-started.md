@@ -20,7 +20,7 @@ In another terminal:
 bun run dev:web
 ```
 
-Open http://127.0.0.1:5173 — the Vite proxy forwards `/api` to the runtime on port **7420**.
+Open http://127.0.0.1:5173. The Vite proxy forwards `/api` to the runtime on port **7420**.
 
 Or use the desktop shell (starts the sidecar for you):
 
@@ -30,12 +30,11 @@ bun run desktop
 
 ## First-run checklist
 
-1. Create an agent (onboarding or **Agents**).
-2. **Models** — paste a provider key (OpenRouter recommended), set default model, click **Test**.
-3. Confirm the agent’s model matches (onboarding applies it; or edit the agent).
-4. Optional: Computer panel → **Install Chromium** for browsing.
-5. Optional: Computer panel → **Enable E2B sandbox** after adding an E2B key (isolated shell).
-6. Send a message. Approve tool prompts as they appear (**Allow once** / **Allow session** / **Deny**).
+1. Your name (onboarding).
+2. Paste a model API key, then an E2B key.
+3. Create your first teammate.
+4. Chat, then **Watch** or **Open** the computer.
+5. Approve tool prompts as they appear (**Allow once** / **Allow session** / **Deny**).
 
 ## Headless / auto-approve
 
@@ -47,7 +46,6 @@ Only use `--yes` on a machine you trust. See [permissions.md](./permissions.md).
 
 ## Next reading
 
-- [desktop.md](./desktop.md) — packaged app issues and sidecar
-- [providers.md](./providers.md) — model catalog
-- [routines.md](./routines.md) — automation
-- [always-on.md](./always-on.md) — keep routines firing overnight
+- [desktop.md](./desktop.md): packaged app and sidecar
+- [providers.md](./providers.md): model catalog
+- [routines.md](./routines.md): local schedules (cron while the app is running)

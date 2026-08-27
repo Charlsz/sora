@@ -267,15 +267,20 @@ export default function ComputerPanel({
           <p className="truncate text-[13px] font-medium text-ink">
             {name}&apos;s screen
           </p>
-          {controlUrl && (
-            <button
-              type="button"
-              onClick={() => setControlUrl(null)}
-              className="shrink-0 text-[12px] font-medium text-ink-3 hover:text-ink"
-            >
-              Exit
-            </button>
-          )}
+          <div className="flex shrink-0 items-center gap-2">
+            {!controlUrl && connected && mode === "sandbox" && (
+              <span className="text-[11px] font-medium text-ink-3">Watch</span>
+            )}
+            {controlUrl && (
+              <button
+                type="button"
+                onClick={() => setControlUrl(null)}
+                className="text-[12px] font-medium text-ink-3 hover:text-ink"
+              >
+                Exit
+              </button>
+            )}
+          </div>
         </div>
 
         <div
