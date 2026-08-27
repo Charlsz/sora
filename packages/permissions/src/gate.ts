@@ -7,6 +7,7 @@ import {
   type PermissionRequest,
   type PermissionResolution,
 } from "./types.ts";
+import { normalizePolicy } from "./capabilities.ts";
 
 export type AskHandler = (
   request: PermissionRequest,
@@ -22,17 +23,18 @@ export type PermissionGateOptions = {
 
 /**
  * Central permission gate. Tools must call check() before privileged work.
- * Auditable via the event bus.
+ * Auditable via the event bus. Supports a default policy plus per-agent overrides.
  */
 export class PermissionGate {
   readonly policy: PermissionPolicy;
   #events?: EventBus;
   #ask?: AskHandler;
   #autoApprove: boolean;
+  #agentPolicies = new Map<string, PermissionPolicy>();
   #audit: Array<PermissionRequest & PermissionResolution & { at: string }> = [];
 
   constructor(options: PermissionGateOptions = {}) {
-    this.policy = options.policy ?? DEFAULT_AGENT_POLICY;
+    this.policy = normalizePolicy(options.policy ?? DEFAULT_AGENT_POLICY);
     this.#events = options.events;
     this.#ask = options.ask;
     this.#autoApprove =
@@ -50,18 +52,66 @@ export class PermissionGate {
     this.#ask = ask;
   }
 
-  resolve(action: PermissionRequest["action"]): PermissionResolution {
-    const decision = this.policy.actions[action] ?? this.policy.default;
+  setAgentPolicy(agentId: string, policy: PermissionPolicy): void {
+    this.#agentPolicies.set(agentId, normalizePolicy(policy));
+  }
+
+  clearAgentPolicy(agentId: string): void {
+    this.#agentPolicies.delete(agentId);
+  }
+
+  getAgentPolicy(agentId: string): PermissionPolicy {
+    return this.#agentPolicies.get(agentId) ?? this.policy;
+  }
+
+  resolve(
+    action: PermissionRequest["action"],
+    agentId?: string,
+    detail?: Record<string, unknown>,
+  ): PermissionResolution {
+    const policy =
+      (agentId ? this.#agentPolicies.get(agentId) : undefined) ?? this.policy;
+
+    const localComputer = detail?.computer === "local";
+    if (localComputer && policy.localComputer) {
+      const localDecision = policy.localComputer;
+      if (localDecision === "deny") {
+        return {
+          decision: "deny",
+          reason: `policy.localComputer=deny`,
+        };
+      }
+      if (localDecision === "ask") {
+        // Local ask wins over category allow (Grok: require-approval beats allow).
+        const actionDecision = policy.actions[action] ?? policy.default;
+        if (actionDecision === "deny") {
+          return {
+            decision: "deny",
+            reason: `policy.actions.${action}=deny`,
+          };
+        }
+        return {
+          decision: "ask",
+          reason: `policy.localComputer=ask`,
+        };
+      }
+    }
+
+    const decision = policy.actions[action] ?? policy.default;
     return {
       decision,
-      reason: this.policy.actions[action]
+      reason: policy.actions[action]
         ? `policy.actions.${action}=${decision}`
         : `policy.default=${decision}`,
     };
   }
 
   async check(request: PermissionRequest): Promise<PermissionResolution> {
-    let resolution = this.resolve(request.action);
+    let resolution = this.resolve(
+      request.action,
+      request.agentId,
+      request.detail,
+    );
 
     if (resolution.decision === "ask") {
       if (this.#autoApprove) {

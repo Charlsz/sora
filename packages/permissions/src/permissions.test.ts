@@ -41,4 +41,30 @@ describe("PermissionGate", () => {
     expect(result.decision).toBe("allow");
     expect(seen).toEqual(["allow"]);
   });
+
+  test("per-agent localComputer ask beats category allow", async () => {
+    const gate = new PermissionGate({ autoApprove: false });
+    gate.setAgentPolicy("a1", {
+      default: "deny",
+      actions: { "fs.read": "allow" },
+      localComputer: "ask",
+    });
+    const cloud = await gate.check({
+      agentId: "a1",
+      agentSlug: "dev",
+      action: "fs.read",
+      resource: "a.txt",
+    });
+    expect(cloud.decision).toBe("allow");
+    const local = await gate.check({
+      agentId: "a1",
+      agentSlug: "dev",
+      action: "fs.read",
+      resource: "a.txt",
+      detail: { computer: "local" },
+    });
+    // ask with no handler → deny
+    expect(local.decision).toBe("deny");
+    expect(local.reason).toContain("localComputer");
+  });
 });

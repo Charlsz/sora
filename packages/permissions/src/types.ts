@@ -27,6 +27,26 @@ export type PermissionPolicy = {
   actions: Partial<Record<PermissionAction, PermissionDecision>>;
   /** Optional default when action is unspecified. */
   default: PermissionDecision;
+  /**
+   * Separate gate for host-machine (This PC) work.
+   * Sandbox/cloud computer uses `actions` only.
+   */
+  localComputer?: PermissionDecision;
+  /**
+   * UI capability rows. Kept for exact round-trip in the settings panel.
+   */
+  capabilities?: Partial<
+    Record<
+      | "localComputer"
+      | "files"
+      | "terminal"
+      | "browser"
+      | "apps"
+      | "external"
+      | "automation",
+      PermissionDecision
+    >
+  >;
 };
 
 export type PermissionResolution = {

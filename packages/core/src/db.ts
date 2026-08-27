@@ -175,4 +175,17 @@ function migrate(db: Database): void {
      ON CONFLICT(key) DO UPDATE SET value = excluded.value
      WHERE CAST(meta.value AS INTEGER) < 5`,
   ).run();
+
+  // v6: per-agent permission policy (Grok-style capabilities)
+  const agentColsV6 = db
+    .query(`PRAGMA table_info(agents)`)
+    .all() as Array<{ name: string }>;
+  if (!agentColsV6.some((c) => c.name === "policy_json")) {
+    db.exec(`ALTER TABLE agents ADD COLUMN policy_json TEXT`);
+  }
+  db.query(
+    `INSERT INTO meta (key, value) VALUES ('schema_version', '6')
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value
+     WHERE CAST(meta.value AS INTEGER) < 6`,
+  ).run();
 }
