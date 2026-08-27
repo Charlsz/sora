@@ -104,10 +104,23 @@ fn resolve_runtime(
 
 fn spawn_runtime(bin: &Path, args: &[String], cwd: Option<&Path>) -> Option<Child> {
   let mut cmd = Command::new(bin);
-  cmd.args(args)
-    .env("SORA_BROWSER", "on")
-    .stdout(Stdio::inherit())
-    .stderr(Stdio::inherit());
+  cmd.args(args).env("SORA_BROWSER", "on");
+
+  // Release sidecar (sora-runtime.exe) must stay invisible — inheriting stdio
+  // or omitting CREATE_NO_WINDOW pops a console on Windows during onboarding.
+  #[cfg(windows)]
+  {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    cmd.creation_flags(CREATE_NO_WINDOW);
+  }
+
+  if cfg!(debug_assertions) {
+    cmd.stdout(Stdio::inherit()).stderr(Stdio::inherit());
+  } else {
+    cmd.stdout(Stdio::null()).stderr(Stdio::null());
+  }
+
   if let Some(dir) = cwd {
     cmd.current_dir(dir);
   }
