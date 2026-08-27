@@ -5,6 +5,11 @@ import type {
   BrowserScreenshotResult,
   BrowserStatus,
 } from "./types.ts";
+import {
+  chromeDebugClickCommand,
+  chromeDebugOpenCommand,
+  chromeDebugTypeCommand,
+} from "./desktop-cdp.ts";
 
 export type DesktopGui = {
   open: (fileOrUrl: string) => Promise<void>;
@@ -15,11 +20,18 @@ export type DesktopGui = {
   keepAlive?: () => Promise<void>;
   /** Fetch page HTML via the sandbox shell (has internet). */
   fetchText?: (url: string) => Promise<string>;
+  /** Run a shell command inside the desktop VM. */
+  exec?: (
+    command: string,
+  ) => Promise<{ stdout: string; stderr: string; exitCode: number }>;
 };
 
 /**
  * Drive the cloud desktop GUI (E2B) so browser_* tools hit the same VM
  * the user watches / takes control of — not a separate host Playwright window.
+ *
+ * CSS selectors are resolved via Chrome DevTools Protocol inside the VM
+ * (Chrome started with --remote-debugging-port=9222 on navigate).
  */
 export class DesktopBrowser implements Browser {
   #gui: DesktopGui;
@@ -44,10 +56,32 @@ export class DesktopBrowser implements Browser {
   async navigate(url: string): Promise<BrowserNavigateResult> {
     const href = url.trim();
     if (!href) {
-      return { url: this.#url, title: this.#title, ok: false, message: "url required" };
+      return {
+        url: this.#url,
+        title: this.#title,
+        ok: false,
+        message: "url required",
+      };
     }
     await this.#gui.keepAlive?.().catch(() => {});
-    await this.#gui.open(href);
+    if (this.#gui.exec) {
+      const result = await this.#gui.exec(chromeDebugOpenCommand(href));
+      if (result.exitCode !== 0) {
+        // Fall back to desktop open so Watch still shows something.
+        await this.#gui.open(href).catch(() => {});
+        return {
+          url: href,
+          title: href,
+          ok: false,
+          message:
+            result.stderr?.trim() ||
+            result.stdout?.trim() ||
+            "Failed to open Chrome with CDP on the desktop",
+        };
+      }
+    } else {
+      await this.#gui.open(href);
+    }
     this.#url = href;
     this.#title = href;
     this.#open = true;
@@ -55,7 +89,8 @@ export class DesktopBrowser implements Browser {
       url: href,
       title: this.#title,
       ok: true,
-      message: "Opened in the teammate’s cloud desktop browser (visible on their screen).",
+      message:
+        "Opened in the teammate’s cloud desktop browser (visible on their screen).",
     };
   }
 
@@ -85,7 +120,7 @@ export class DesktopBrowser implements Browser {
   }
 
   async click(selector: string): Promise<BrowserActionResult> {
-    // CSS selectors aren’t available on the VNC desktop; prefer Open for precise UI.
+    await this.#gui.keepAlive?.().catch(() => {});
     const coord = /^\s*(\d+)\s*,\s*(\d+)\s*$/.exec(selector);
     if (coord) {
       await this.#gui.leftClick(Number(coord[1]), Number(coord[2]));
@@ -95,11 +130,30 @@ export class DesktopBrowser implements Browser {
         url: this.#url,
       };
     }
+
+    if (!this.#gui.exec) {
+      return {
+        ok: false,
+        message:
+          `Desktop click needs CDP exec for CSS selectors (got “${selector}”).`,
+        url: this.#url,
+      };
+    }
+
+    const result = await this.#gui.exec(chromeDebugClickCommand(selector));
+    if (result.exitCode !== 0) {
+      return {
+        ok: false,
+        message:
+          result.stderr?.trim() ||
+          result.stdout?.trim() ||
+          `Could not click “${selector}” on the desktop browser`,
+        url: this.#url,
+      };
+    }
     return {
-      ok: false,
-      message:
-        `Desktop click needs "x,y" coordinates (got “${selector}”). ` +
-        "Ask the user to Open the screen for precise clicks, or navigate and use keyboard tools.",
+      ok: true,
+      message: `Clicked “${selector}” on the desktop browser`,
       url: this.#url,
     };
   }
@@ -110,12 +164,49 @@ export class DesktopBrowser implements Browser {
     options?: { clear?: boolean },
   ): Promise<BrowserActionResult> {
     await this.#gui.keepAlive?.().catch(() => {});
-    if (options?.clear) {
+    const clear = Boolean(options?.clear);
+
+    // Coordinates-only focus: click then type into whatever is focused.
+    const coord = /^\s*(\d+)\s*,\s*(\d+)\s*$/.exec(selector);
+    if (coord) {
+      await this.#gui.leftClick(Number(coord[1]), Number(coord[2]));
+      if (clear) {
+        await this.#gui.press(["ctrl", "a"]);
+        await this.#gui.press("backspace");
+      }
+      await this.#gui.write(text);
+      return {
+        ok: true,
+        message: `Typed ${text.length} characters at ${coord[1]},${coord[2]}`,
+        url: this.#url,
+      };
+    }
+
+    if (this.#gui.exec && selector.trim()) {
+      const result = await this.#gui.exec(
+        chromeDebugTypeCommand(selector, text, clear),
+      );
+      if (result.exitCode !== 0) {
+        return {
+          ok: false,
+          message:
+            result.stderr?.trim() ||
+            result.stdout?.trim() ||
+            `Could not type into “${selector}”`,
+          url: this.#url,
+        };
+      }
+      return {
+        ok: true,
+        message: `Typed ${text.length} characters into “${selector}”`,
+        url: this.#url,
+      };
+    }
+
+    if (clear) {
       await this.#gui.press(["ctrl", "a"]);
       await this.#gui.press("backspace");
     }
-    // Focus is whatever is active on the desktop after navigate/Open.
-    void selector;
     await this.#gui.write(text);
     return {
       ok: true,

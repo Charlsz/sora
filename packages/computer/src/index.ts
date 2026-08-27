@@ -6,6 +6,11 @@ export {
 } from "./browser.ts";
 export { DesktopBrowser, type DesktopGui } from "./desktop-browser.ts";
 export {
+  chromeDebugClickCommand,
+  chromeDebugOpenCommand,
+  chromeDebugTypeCommand,
+} from "./desktop-cdp.ts";
+export {
   getBrowserInstallStatus,
   installPlaywrightChromium,
   type BrowserInstallStatus,

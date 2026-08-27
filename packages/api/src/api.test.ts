@@ -95,6 +95,34 @@ describe("api permission ask", () => {
     const list = (await res.json()) as unknown[];
     expect(list).toEqual([]);
   });
+
+  test("Watch display does not create permission prompts", async () => {
+    const agents = (await (
+      await fetch(`${server.url}/api/agents`)
+    ).json()) as Array<{ slug: string }>;
+    const slug = agents[0]?.slug;
+    expect(slug).toBeTruthy();
+
+    const before = (await (
+      await fetch(`${server.url}/api/permissions/pending`)
+    ).json()) as unknown[];
+
+    const display = await fetch(
+      `${server.url}/api/agents/${slug}/computer/display`,
+    );
+    expect(display.ok).toBe(true);
+
+    // Poll again like the UI (every 2.5s) — must not stack Allow prompts.
+    const display2 = await fetch(
+      `${server.url}/api/agents/${slug}/computer/display`,
+    );
+    expect(display2.ok).toBe(true);
+
+    const after = (await (
+      await fetch(`${server.url}/api/permissions/pending`)
+    ).json()) as unknown[];
+    expect(after.length).toBe(before.length);
+  });
 });
 
 describe("api providers", () => {
@@ -192,7 +220,9 @@ describe("api providers", () => {
       workspaceRoot: string;
     };
     expect(body.workspaceRoot).toContain(agent.slug);
-    expect(["playwright", "placeholder"]).toContain(body.browser.backend);
+    expect(["playwright", "placeholder", "remote-desktop"]).toContain(
+      body.browser.backend,
+    );
   });
 
   test("browser install status endpoint", async () => {

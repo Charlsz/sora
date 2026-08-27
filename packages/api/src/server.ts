@@ -984,12 +984,9 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
         if (displayMatch && req.method === "GET") {
           const slug = decodeURIComponent(displayMatch[1]!);
           const agent = services.agents.requireBySlugOrName(slug);
-          await services.permissions.assert({
-            agentId: agent.id,
-            agentSlug: agent.slug,
-            action: "browser.screenshot",
-            resource: "viewport",
-          });
+          // Watch is an explicit UI poll (like Take control) — never gate on
+          // permissions.assert. Asking here spammed Allow every 2.5s and left
+          // the preview stuck on "starting…".
           const computer = services.runner.getComputer(agent);
           let frame = null;
           try {

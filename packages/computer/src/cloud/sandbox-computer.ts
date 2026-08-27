@@ -129,6 +129,11 @@ export class SandboxComputer implements Computer {
             }
             return result.stdout;
           },
+          exec: async (command) => {
+            const session = await this.#ensureSession();
+            await session.keepAlive().catch(() => {});
+            return session.exec(command, { timeoutMs: 90_000 });
+          },
         });
       }
       return this.#desktopBrowser;
