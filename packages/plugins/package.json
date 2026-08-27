@@ -11,6 +11,7 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@composio/core": "^0.17.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@sora/core": "workspace:*",
     "@sora/permissions": "workspace:*",

@@ -7,7 +7,7 @@
 | GitHub | When a GitHub token is configured |
 | Composio / Pipedream | Optional connector catalogs |
 | botdirectory | Curated **setup prompts** — import creates a teammate shell; client sends `setupPrompt` as the first chat message (see [agents-and-chat.md](./agents-and-chat.md)) |
-| composio | Connect apps (Gmail, X, Slack, …) via browser login — 3-step setup in Connected apps |
+| composio | Connect apps (Gmail, X, Slack, …) via Composio Platform sessions (`ak_` project key + Connect Link) |
 
 UI: **Plugins**. Reload picks up new tools without restarting the whole stack.
 

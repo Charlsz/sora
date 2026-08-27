@@ -4,7 +4,8 @@ export {
 } from "./registry.ts";
 export { hasCredential, redactSecret, resolveApiKey } from "./security.ts";
 export { githubPlugin } from "./builtins/github.ts";
-export { composioPlugin } from "./builtins/composio.ts";
+export { composioPlugin, listComposioConnections } from "./builtins/composio.ts";
+export type { ComposioConnectionSummary } from "./builtins/composio.ts";
 export { pipedreamPlugin } from "./builtins/pipedream.ts";
 export { openapiPlugin } from "./builtins/openapi.ts";
 export { botdirectoryPlugin } from "./builtins/botdirectory.ts";
