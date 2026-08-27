@@ -21,10 +21,10 @@ function runNodeScript(script: string, args: string[]): string {
 }
 
 const ENSURE_CHROME = [
-  "mkdir -p /tmp/sora-chrome",
+  "mkdir -p /home/user/.sora-chrome",
   "if ! curl -fsS http://127.0.0.1:9222/json/version >/dev/null 2>&1; then",
   "  pkill -f 'remote-debugging-port=9222' >/dev/null 2>&1 || true",
-  "  (google-chrome --remote-debugging-port=9222 --user-data-dir=/tmp/sora-chrome --no-first-run --no-default-browser-check --disable-gpu about:blank >/tmp/sora-chrome.log 2>&1 &)",
+  "  (google-chrome --remote-debugging-port=9222 --user-data-dir=/home/user/.sora-chrome --no-first-run --no-default-browser-check --disable-gpu about:blank >/home/user/.sora-chrome.log 2>&1 &)",
   "  for i in $(seq 1 40); do curl -fsS http://127.0.0.1:9222/json/version >/dev/null 2>&1 && break; sleep 0.35; done",
   "fi",
 ].join("\n");

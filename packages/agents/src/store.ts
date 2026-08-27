@@ -1,5 +1,11 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import type { EventBus, SoraDatabase, SoraPaths } from "@sora/core";
+import {
+  normalizePolicy,
+  policyFromCapabilities,
+  DEFAULT_CAPABILITY_LEVELS,
+  type PermissionPolicy,
+} from "@sora/permissions";
 import { isReservedTeammateName, pickTeammateName } from "./names.ts";
 import {
   type Agent,
@@ -63,6 +69,9 @@ export class AgentStore {
       input.capabilities ?? inferCapabilities(name, input.description ?? "");
 
     const accentColor = normalizeAccentColor(input.accentColor);
+    const policy = normalizePolicy(
+      input.policy ?? policyFromCapabilities(DEFAULT_CAPABILITY_LEVELS),
+    );
 
     const agent: Agent = {
       id,
@@ -77,6 +86,7 @@ export class AgentStore {
       tools,
       skills,
       capabilities,
+      policy,
       memory: { kind: "sqlite", agentId: id },
       status: "idle",
       createdAt: now,
@@ -87,8 +97,8 @@ export class AgentStore {
       .query(
         `INSERT INTO agents (
           id, slug, name, description, instructions, model, accent_color,
-          tools_json, skills_json, capabilities_json, status, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          tools_json, skills_json, capabilities_json, policy_json, status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         agent.id,
@@ -101,34 +111,13 @@ export class AgentStore {
         JSON.stringify(agent.tools),
         JSON.stringify(agent.skills),
         JSON.stringify(agent.capabilities),
+        JSON.stringify(agent.policy),
         agent.status,
         agent.createdAt,
         agent.updatedAt,
       );
 
-    const agentPaths = this.paths.agent(agent.slug);
-    mkdirSync(agentPaths.workspace, { recursive: true });
-    mkdirSync(agentPaths.memory, { recursive: true });
-    mkdirSync(agentPaths.skills, { recursive: true });
-    writeFileSync(
-      agentPaths.config,
-      JSON.stringify(
-        {
-          id: agent.id,
-          slug: agent.slug,
-          name: agent.name,
-          description: agent.description,
-          instructions: agent.instructions,
-          model: agent.model,
-          accentColor: agent.accentColor,
-          tools: agent.tools,
-          skills: agent.skills,
-          capabilities: agent.capabilities,
-        },
-        null,
-        2,
-      ) + "\n",
-    );
+    this.writeAgentConfig(agent);
 
     void this.events.emit(
       "agent.created",
@@ -194,7 +183,12 @@ export class AgentStore {
     patch: Partial<
       Pick<
         Agent,
-        "name" | "description" | "instructions" | "model" | "accentColor"
+        | "name"
+        | "description"
+        | "instructions"
+        | "model"
+        | "accentColor"
+        | "policy"
       >
     >,
   ): Agent {
@@ -215,12 +209,16 @@ export class AgentStore {
         patch.accentColor !== undefined
           ? normalizeAccentColor(patch.accentColor)
           : agent.accentColor,
+      policy:
+        patch.policy !== undefined
+          ? normalizePolicy(patch.policy)
+          : agent.policy,
       updatedAt: new Date().toISOString(),
     };
 
     this.db
       .query(
-        `UPDATE agents SET name = ?, description = ?, instructions = ?, model = ?, accent_color = ?, updated_at = ? WHERE id = ?`,
+        `UPDATE agents SET name = ?, description = ?, instructions = ?, model = ?, accent_color = ?, policy_json = ?, updated_at = ? WHERE id = ?`,
       )
       .run(
         updated.name,
@@ -228,30 +226,12 @@ export class AgentStore {
         updated.instructions,
         updated.model,
         updated.accentColor,
+        JSON.stringify(updated.policy),
         updated.updatedAt,
         updated.id,
       );
 
-    const agentPaths = this.paths.agent(updated.slug);
-    writeFileSync(
-      agentPaths.config,
-      JSON.stringify(
-        {
-          id: updated.id,
-          slug: updated.slug,
-          name: updated.name,
-          description: updated.description,
-          instructions: updated.instructions,
-          model: updated.model,
-          accentColor: updated.accentColor,
-          tools: updated.tools,
-          skills: updated.skills,
-          capabilities: updated.capabilities,
-        },
-        null,
-        2,
-      ) + "\n",
-    );
+    this.writeAgentConfig(updated);
 
     void this.events.emit(
       "agent.updated",
@@ -265,6 +245,38 @@ export class AgentStore {
   delete(slug: string): void {
     const agent = this.requireBySlug(slug);
     this.db.query(`DELETE FROM agents WHERE id = ?`).run(agent.id);
+    void this.events.emit(
+      "agent.deleted",
+      { agentId: agent.id, slug: agent.slug, name: agent.name },
+      "agents",
+    );
+  }
+
+  private writeAgentConfig(agent: Agent): void {
+    const agentPaths = this.paths.agent(agent.slug);
+    mkdirSync(agentPaths.workspace, { recursive: true });
+    mkdirSync(agentPaths.memory, { recursive: true });
+    mkdirSync(agentPaths.skills, { recursive: true });
+    writeFileSync(
+      agentPaths.config,
+      JSON.stringify(
+        {
+          id: agent.id,
+          slug: agent.slug,
+          name: agent.name,
+          description: agent.description,
+          instructions: agent.instructions,
+          model: agent.model,
+          accentColor: agent.accentColor,
+          tools: agent.tools,
+          skills: agent.skills,
+          capabilities: agent.capabilities,
+          policy: agent.policy,
+        },
+        null,
+        2,
+      ) + "\n",
+    );
   }
 }
 
@@ -275,11 +287,11 @@ function defaultInstructions(name: string, description: string): string {
     "You work as a teammate alongside the user’s other bots.",
     "You have a computer (files, terminal, browser) and can use the internet.",
     "For web research or APIs, use http_request or browser_navigate on your computer.",
-    "For Gmail, Slack, calendars, X, and other signed-in apps, use Composio tools when available (composio_list_connections, composio_execute).",
+    "For Gmail, Slack, calendars, X, and other signed-in apps, use Composio tools when available (composio_list_connections, composio_search_tools, composio_execute). Connections are shared across all teammates — if list_connections shows ACTIVE, do not ask the user to connect again.",
     "Never treat those apps as teammates — do not use delegate_task to connect them.",
     "Never ask the user to paste passwords, API keys, or account login credentials into chat.",
     "If a login is needed on the computer, ask them to Take control and type it themselves.",
-    "When another teammate should do the work, use delegate_task or agent_message.",
+    "When another teammate should do the work, use delegate_task (hand off a task) or agent_message (talk to them; they run now by default).",
     "Be concise, practical, and honest. Prefer doing the work over saying you cannot.",
   ].join(" ");
 }
@@ -290,7 +302,14 @@ function inferCapabilities(name: string, description: string): string[] {
   const caps = new Set<string>();
 
   if (/\b(dev|engineer|software|code|bun|typescript|backend)\b/.test(text)) {
-    for (const c of ["typescript", "bun", "backend", "coding", "filesystem", "terminal"]) {
+    for (const c of [
+      "typescript",
+      "bun",
+      "backend",
+      "coding",
+      "filesystem",
+      "terminal",
+    ]) {
       caps.add(c);
     }
   }
@@ -333,6 +352,17 @@ function rowToAgent(row: Record<string, unknown>): Agent {
       accentColor = null;
     }
   }
+  let policy: PermissionPolicy;
+  try {
+    const raw = row.policy_json;
+    policy = normalizePolicy(
+      raw != null && String(raw).trim()
+        ? (JSON.parse(String(raw)) as PermissionPolicy)
+        : null,
+    );
+  } catch {
+    policy = normalizePolicy(null);
+  }
   return {
     id: String(row.id),
     slug: String(row.slug),
@@ -344,6 +374,7 @@ function rowToAgent(row: Record<string, unknown>): Agent {
     tools: JSON.parse(String(row.tools_json || "[]")),
     skills: JSON.parse(String(row.skills_json || "[]")),
     capabilities: JSON.parse(String(row.capabilities_json || "[]")),
+    policy,
     memory: { kind: "sqlite", agentId: String(row.id) },
     status: String(row.status) as AgentStatus,
     createdAt: String(row.created_at),

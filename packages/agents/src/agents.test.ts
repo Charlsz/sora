@@ -108,6 +108,27 @@ describe("agents", () => {
     expect(after.length).toBe(0);
   });
 
+  test("agent_message defaults to run and returns teammate reply", async () => {
+    await createAgent(services, { name: "Klaus" });
+    await createAgent(services, { name: "Dev" });
+
+    const sendResult = await services.runner.executeToolForWorkflow(
+      "klaus",
+      "agent_message",
+      {
+        to: "dev",
+        message: "Say hi to the user in one short sentence.",
+      },
+    );
+    expect(sendResult.ok).toBe(true);
+    expect(sendResult.output).toContain("Talked to");
+    expect(sendResult.output).toContain("Their reply:");
+    const data = sendResult.data as { deliver?: string; reply?: string };
+    expect(data?.deliver).toBe("run");
+    expect(typeof data?.reply).toBe("string");
+    expect((data?.reply ?? "").length).toBeGreaterThan(0);
+  });
+
   test("Klaus delegates to Dev", async () => {
     await createAgent(services, {
       name: "Klaus",

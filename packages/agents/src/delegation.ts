@@ -78,8 +78,11 @@ export class DelegationService {
         from: request.fromAgentSlug,
         to: target.slug,
         task: request.task,
+        message: request.task,
         score: match.score,
         reasons: match.reasons,
+        status: "started",
+        deliver: "run",
       },
       "delegation",
     );
@@ -96,6 +99,23 @@ export class DelegationService {
       this.#chain.pop();
       this.#depth -= 1;
     }
+
+    await this.#events.emit(
+      "agent.delegated",
+      {
+        from: request.fromAgentSlug,
+        to: target.slug,
+        task: request.task,
+        message: request.task,
+        reply: run.reply,
+        score: match.score,
+        reasons: match.reasons,
+        status: "completed",
+        deliver: "run",
+        conversationId: run.conversationId,
+      },
+      "delegation",
+    );
 
     const envelope = createEnvelope({
       type: "result",

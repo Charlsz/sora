@@ -33,7 +33,12 @@ export type ToolContext = {
       to: string;
       message: string;
       deliver?: "queue" | "run";
-    }): Promise<{ ok: boolean; output: string; error?: string }>;
+    }): Promise<{
+      ok: boolean;
+      output: string;
+      error?: string;
+      data?: unknown;
+    }>;
   };
   memory?: import("@sora/memory").MemoryStore;
   signal?: AbortSignal;

@@ -4,11 +4,11 @@ import { httpRequestTool } from "./http-request.ts";
 /** @deprecated use httpRequestTool from http-request.ts */
 export { httpRequestTool };
 
-/** Agents can leave notes for other agents (delegation uses delegate_task). */
+/** Talk to another teammate. Defaults to running them now so the user sees the exchange. */
 export const agentMessageTool: Tool = {
   name: "agent_message",
   description:
-    "Send a message to another agent by name or slug. Use deliver=run to trigger them immediately.",
+    "Send a message to another teammate by name or slug. By default they run immediately and you get their reply. Use deliver=queue only to leave a note without waking them.",
   inputSchema: {
     type: "object",
     properties: {
@@ -16,7 +16,7 @@ export const agentMessageTool: Tool = {
       message: { type: "string", description: "Message content" },
       deliver: {
         type: "string",
-        description: "queue (default) or run (start agent now)",
+        description: "run (default: wake them now) or queue (inbox only)",
       },
     },
     required: ["to", "message"],
@@ -37,8 +37,8 @@ export const agentMessageTool: Tool = {
         error: "Agent messaging is not configured",
       };
     }
-    const deliver =
-      data.deliver?.trim().toLowerCase() === "run" ? "run" : "queue";
+    const raw = data.deliver?.trim().toLowerCase();
+    const deliver = raw === "queue" ? "queue" : "run";
     const result = await context.agentMessaging.send({
       to: data.to,
       message: data.message,
@@ -48,6 +48,7 @@ export const agentMessageTool: Tool = {
       ok: result.ok,
       output: result.output,
       error: result.error,
+      data: result.data,
     };
   },
 };

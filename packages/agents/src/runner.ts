@@ -14,6 +14,7 @@ import type {
   ProviderRegistry,
 } from "@sora/models";
 import type { PermissionGate } from "@sora/permissions";
+import { listComposioConnections } from "@sora/plugins";
 import {
   parseSkillSlashCommand,
   type SkillInvocation,
@@ -48,6 +49,10 @@ export class AgentRunner {
   #skills: SkillRegistry | null = null;
   /** Nested run refcounts per agent id (delegation-safe status). */
   #activeRuns = new Map<string, number>();
+  /** Nested agent_message deliver=run depth (mirrors delegation limits). */
+  #messageDepth = 0;
+  #messageChain: string[] = [];
+  #composioStatusCache: { at: number; text: string } | null = null;
   /** Long-lived per-agent computers (browser profiles stay warm). */
   readonly computers = new ComputerRegistry();
 
@@ -96,7 +101,7 @@ export class AgentRunner {
     agentSlug: string,
     tool: string,
     args: Record<string, unknown>,
-  ): Promise<{ ok: boolean; output: string; error?: string }> {
+  ): Promise<{ ok: boolean; output: string; error?: string; data?: unknown }> {
     const agent = this.agents.requireBySlugOrName(agentSlug);
     const result = await this.#executeTool(
       agent,
@@ -108,6 +113,7 @@ export class AgentRunner {
       ok: result.ok,
       output: result.output,
       error: result.error,
+      data: result.data,
     };
   }
 
@@ -159,6 +165,7 @@ export class AgentRunner {
       });
 
       const toolDefs = this.#toolDefinitions(agent, skillInvocation);
+      const composioStatus = await this.#composioStatusBlurb();
       const messages: ChatMessage[] = [
         {
           role: "system",
@@ -169,6 +176,7 @@ export class AgentRunner {
             inboxMessages.map(
               (m) => `[${m.fromAgentSlug}] ${m.content}`,
             ),
+            composioStatus,
           ),
         },
         ...history
@@ -233,6 +241,7 @@ export class AgentRunner {
                     inboxMessages.map(
                       (m) => `[${m.fromAgentSlug}] ${m.content}`,
                     ),
+                    composioStatus,
                   ),
                 };
               }
@@ -426,6 +435,7 @@ export class AgentRunner {
     memories: string[],
     skill: SkillInvocation | null,
     inbox: string[] = [],
+    composioStatus: string | null = null,
   ): string {
     const workspace = this.paths.agent(agent.slug).workspace;
     const peers = this.agents
@@ -444,12 +454,16 @@ export class AgentRunner {
         "terminal: runs inside that same VM (curl, scripts, installs).",
         "Do not claim you lack internet or a browser when these tools are available.",
         "Prefer browser_navigate + screenshots for interactive sites; http_request for raw HTML/APIs.",
+        "Account setup: use Composio tools for apps the user linked (Gmail, GitHub, Slack, …).",
+        "If an app has no Composio connection or needs a custom login (e.g. X without an auth config), open it in the cloud browser and ask the user to Take control to finish sign-in — never ask them to paste passwords into chat.",
       ].join(" "),
       peers.length
         ? [
             "Your teammates (each has their own chat, memory, and computer):",
             ...peers.map((p) => `- ${p}`),
             "Use delegate_task to hand off work, or agent_message to talk to them.",
+            "agent_message wakes them immediately by default and returns their reply — use that when the user wants you to talk to another bot now.",
+            "Only use deliver=queue for a silent inbox note.",
           ].join("\n")
         : "You are currently the only teammate. The user can add more from the sidebar.",
     ];
@@ -466,13 +480,16 @@ export class AgentRunner {
     if (this.tools.list().some((t) => t.name.startsWith("composio_"))) {
       parts.push(
         [
-          "Connected apps (Composio): use composio_list_connections then composio_execute",
-          "for Gmail, Slack, calendars, X, and other linked services.",
+          "Connected apps (Composio) are shared by every teammate on this Sora install.",
+          "Always call composio_list_connections before telling the user an app is missing.",
+          "If a toolkit shows ACTIVE, it is already linked — use composio_search_tools then composio_execute; do not ask them to connect again.",
+          "If inactive or missing, tell them to tap + in the message bar (or Connected apps) and finish browser login once.",
+          "Prefer Composio over guessing from the computer when an ACTIVE connection exists.",
           "Never treat those apps as teammates — do not use delegate_task to “connect Gmail” or similar.",
-          "If an app is not linked yet, tell the user to tap + in the message bar (or Connected apps) and finish browser login.",
           "Never ask the user to paste app passwords into chat.",
         ].join(" "),
       );
+      if (composioStatus) parts.push(composioStatus);
     }
     if (this.tools.list().some((t) => t.name === "schedule_routine")) {
       parts.push(
@@ -503,6 +520,35 @@ export class AgentRunner {
       parts.push("Inbox from other teammates:\n- " + inbox.join("\n- "));
     }
     return parts.join("\n\n");
+  }
+
+  async #composioStatusBlurb(): Promise<string | null> {
+    if (!this.tools.list().some((t) => t.name.startsWith("composio_"))) {
+      return null;
+    }
+    const now = Date.now();
+    // Short cache so a Link in Settings shows up on the next bot turn quickly.
+    if (
+      this.#composioStatusCache &&
+      now - this.#composioStatusCache.at < 15_000
+    ) {
+      return this.#composioStatusCache.text;
+    }
+    try {
+      const rows = await listComposioConnections(this.runtime.secrets);
+      const active = rows.filter((r) => r.status === "ACTIVE");
+      const text = active.length
+        ? [
+            "Current Composio link status for this Sora user (shared by all bots — connect once, every teammate can use it):",
+            ...active.map((r) => `- ${r.slug}: ACTIVE`),
+            "Treat ACTIVE apps as already connected. Do not ask the user to reconnect them.",
+          ].join("\n")
+        : "Current Composio link status: no ACTIVE apps yet for this Sora user.";
+      this.#composioStatusCache = { at: now, text };
+      return text;
+    } catch {
+      return null;
+    }
   }
 
   #isAlwaysAvailableTool(name: string): boolean {
@@ -641,26 +687,113 @@ export class AgentRunner {
             send: async ({ to, message, deliver }) => {
               try {
                 const target = this.agents.requireBySlugOrName(to);
+                const mode = deliver === "queue" ? "queue" : "run";
                 this.inbox!.send({
                   toAgentId: target.id,
                   fromAgentId: agent.id,
                   fromAgentSlug: agent.slug,
                   content: message,
-                  deliver: deliver ?? "queue",
+                  deliver: mode,
                 });
-                if (deliver === "run") {
-                  void this.run({
-                    agent: target.slug,
-                    prompt: `[Message from ${agent.slug}] ${message}`,
-                  }).catch(() => {});
+                if (mode === "queue") {
+                  await this.events.emit(
+                    "agent.messaged",
+                    {
+                      from: agent.slug,
+                      fromName: agent.name,
+                      to: target.slug,
+                      toName: target.name,
+                      message,
+                      deliver: "queue",
+                    },
+                    "agents",
+                  );
                   return {
                     ok: true,
-                    output: `Message sent and run started for ${target.slug}`,
+                    output: `Note left for ${target.name}. They will see it on their next run.`,
+                    data: { to: target.slug, deliver: "queue" },
                   };
                 }
+
+                if (this.#messageDepth >= 3) {
+                  return {
+                    ok: false,
+                    output: "",
+                    error: "Teammate message depth limit (3) exceeded",
+                  };
+                }
+                if (
+                  this.#messageChain.includes(target.id) ||
+                  target.id === agent.id
+                ) {
+                  return {
+                    ok: false,
+                    output: "",
+                    error: `Message cycle rejected: ${agent.slug} → ${target.slug}`,
+                  };
+                }
+
+                await this.events.emit(
+                  "agent.messaged",
+                  {
+                    from: agent.slug,
+                    fromName: agent.name,
+                    to: target.slug,
+                    toName: target.name,
+                    message,
+                    deliver: "run",
+                    status: "started",
+                  },
+                  "agents",
+                );
+
+                this.#messageDepth += 1;
+                this.#messageChain.push(agent.id);
+                let run: RunAgentResult;
+                try {
+                  run = await this.run({
+                    agent: target.slug,
+                    prompt: [
+                      `Message from teammate ${agent.name} (${agent.slug}):`,
+                      message,
+                      "",
+                      "Reply to that teammate. If they asked you to message the user, do so clearly in your reply.",
+                    ].join("\n"),
+                  });
+                } finally {
+                  this.#messageChain.pop();
+                  this.#messageDepth -= 1;
+                }
+
+                await this.events.emit(
+                  "agent.messaged",
+                  {
+                    from: agent.slug,
+                    fromName: agent.name,
+                    to: target.slug,
+                    toName: target.name,
+                    message,
+                    reply: run.reply,
+                    deliver: "run",
+                    status: "completed",
+                    conversationId: run.conversationId,
+                  },
+                  "agents",
+                );
+
                 return {
                   ok: true,
-                  output: `Message queued for ${target.slug}. They will see it on their next run.`,
+                  output: [
+                    `Talked to ${target.name}.`,
+                    `Their reply:`,
+                    run.reply || "(no reply)",
+                  ].join("\n"),
+                  data: {
+                    to: target.slug,
+                    deliver: "run",
+                    reply: run.reply,
+                    conversationId: run.conversationId,
+                  },
                 };
               } catch (error) {
                 return {

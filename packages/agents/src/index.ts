@@ -95,6 +95,9 @@ export function createSoraServices(
     events: runtime.events,
     ...options.permissions,
   });
+  for (const agent of agents.list()) {
+    permissions.setAgentPolicy(agent.id, agent.policy);
+  }
   const skills = new SkillRegistry({
     skillsDir: runtime.paths.skills,
     extraRoots: options.skillRoots,
@@ -178,7 +181,12 @@ export async function createAgent(
   services: SoraServices,
   input: CreateAgentInput,
 ) {
-  return services.agents.create(input, services.runtime.config.defaultModel);
+  const agent = services.agents.create(
+    input,
+    services.runtime.config.defaultModel,
+  );
+  services.permissions.setAgentPolicy(agent.id, agent.policy);
+  return agent;
 }
 
 export { pickTeammateName, isReservedTeammateName } from "./names.ts";

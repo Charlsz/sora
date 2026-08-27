@@ -1,4 +1,5 @@
 import type { ModelReference as ParsedModelRef } from "@sora/models";
+import type { PermissionPolicy } from "@sora/permissions";
 import type { ToolReference } from "@sora/tools";
 
 export type AgentStatus = "idle" | "running" | "error" | "paused";
@@ -26,6 +27,8 @@ export type Agent = {
   tools: ToolReference[];
   skills: SkillReference[];
   capabilities: string[];
+  /** Allow / ask / deny policy for tools and local computer. */
+  policy: PermissionPolicy;
   memory: MemoryReference;
   status: AgentStatus;
   createdAt: string;
@@ -42,6 +45,7 @@ export type CreateAgentInput = {
   tools?: string[];
   skills?: string[];
   capabilities?: string[];
+  policy?: PermissionPolicy;
   slug?: string;
 };
 

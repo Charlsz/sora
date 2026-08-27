@@ -19,7 +19,12 @@ async function requirePermission(
     agentSlug: context.agentSlug,
     action,
     resource,
-    detail,
+    detail: {
+      ...(context.computer?.provider
+        ? { computer: context.computer.provider }
+        : {}),
+      ...detail,
+    },
   });
 }
 

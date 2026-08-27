@@ -37,12 +37,28 @@ fn sidecar_args(port: &str) -> Vec<String> {
   vec!["start".into(), "--port".into(), port.into()]
 }
 
-/** Prefer compiled sidecar; fall back to repo `bun` while developing. */
+/** Dev uses live Bun sources; release prefers the compiled sidecar. */
 fn resolve_runtime(
   app: &tauri::AppHandle,
   port: &str,
 ) -> (PathBuf, Vec<String>, Option<PathBuf>) {
   let args = sidecar_args(port);
+  let root = repo_root();
+
+  // `tauri dev` copies a stale sidecar next to the exe. Prefer source so API
+  // changes (e.g. agent policy / capabilities) apply without a sidecar rebuild.
+  if cfg!(debug_assertions) {
+    return (
+      PathBuf::from("bun"),
+      vec![
+        "cli/src/bin.ts".into(),
+        "start".into(),
+        "--port".into(),
+        port.into(),
+      ],
+      Some(root),
+    );
+  }
 
   if let Ok(exe) = std::env::current_exe() {
     if let Some(dir) = exe.parent() {
@@ -64,7 +80,6 @@ fn resolve_runtime(
     }
   }
 
-  let root = repo_root();
   let sidecar_dev = root.join("apps/desktop/src-tauri/binaries");
   if let Ok(entries) = std::fs::read_dir(&sidecar_dev) {
     for entry in entries.flatten() {

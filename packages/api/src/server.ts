@@ -108,6 +108,7 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
               },
               services.runtime.config.defaultModel,
             );
+            services.permissions.setAgentPolicy(agent.id, agent.policy);
             return json(agent, cors, 201);
           } catch (err) {
             return json(
@@ -147,6 +148,7 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
             instructions?: string;
             model?: string;
             accentColor?: string | null;
+            policy?: import("@sora/permissions").PermissionPolicy;
           };
           if (body.model?.trim()) {
             try {
@@ -169,7 +171,9 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
               instructions: body.instructions,
               model: body.model?.trim(),
               accentColor: body.accentColor,
+              policy: body.policy,
             });
+            services.permissions.setAgentPolicy(agent.id, agent.policy);
             return json(agent, cors);
           } catch (err) {
             return json(
@@ -182,7 +186,9 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
 
         if (agentMatch && req.method === "DELETE") {
           const slug = decodeURIComponent(agentMatch[1]!);
+          const existing = services.agents.getBySlug(slug);
           services.agents.delete(slug);
+          if (existing) services.permissions.clearAgentPolicy(existing.id);
           return json({ ok: true, slug }, cors);
         }
         if (agentMatch && req.method === "GET") {
@@ -398,6 +404,17 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
             },
             cors,
           );
+        }
+
+        if (
+          url.pathname === "/api/plugins/composio/connections" &&
+          req.method === "GET"
+        ) {
+          const { listComposioConnections } = await import("@sora/plugins");
+          const connections = await listComposioConnections(
+            services.runtime.secrets,
+          );
+          return json({ connections, userId: "sora-local" }, cors);
         }
 
         if (url.pathname === "/api/vault" && req.method === "GET") {
@@ -825,6 +842,7 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
             },
             services.runtime.config.defaultModel,
           );
+          services.permissions.setAgentPolicy(agent.id, agent.policy);
           return json(
             {
               ok: true,
