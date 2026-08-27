@@ -322,6 +322,9 @@ export function App() {
 
   useEffect(() => {
     saveRightPanelOpen(computerOpen);
+    // Hiding the rail unmounts ComputerPanel — drop Open layout so chat
+    // doesn't stay pinned at 380px with an empty desktop column.
+    if (!computerOpen) setVmControlUrl(null);
   }, [computerOpen]);
 
   async function loadConversation(id: string) {
@@ -714,7 +717,7 @@ export function App() {
 
       <main
         className={`flex min-h-0 flex-col bg-panel/85 backdrop-blur-md ${
-          vmControlUrl && showChatChrome
+          computerOpen && vmControlUrl && showChatChrome
             ? "w-[380px] shrink-0 border-r border-line"
             : "min-w-0 flex-1"
         }`}

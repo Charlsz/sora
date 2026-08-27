@@ -81,6 +81,12 @@ export default function ComputerPanel({
   }, [controlUrl]);
 
   useEffect(() => {
+    return () => {
+      onControlChange?.(null);
+    };
+  }, [onControlChange]);
+
+  useEffect(() => {
     if (mode !== "sandbox" || !agentSlug || !computerReady || controlUrl) {
       if (mode !== "sandbox" || !agentSlug || !computerReady) setShot(null);
       return;
