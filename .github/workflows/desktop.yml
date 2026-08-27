@@ -7,6 +7,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Draft releases need contents:write. Default GITHUB_TOKEN is often read-only.
+permissions:
+  contents: write
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -73,6 +77,8 @@ jobs:
       - run: bun install
       - name: Build sidecar
         run: bun scripts/build-sidecar.ts
+      # Do not pass APPLE_* env vars unless secrets exist. Empty strings still
+      # make tauri-action attempt keychain import and fail codesign.
       - name: Build Tauri (macOS)
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         uses: tauri-apps/tauri-action@v0
@@ -83,8 +89,21 @@ jobs:
           tauriScript: bunx tauri
           args: --bundles dmg,app
           includeUpdaterJson: false
-      - name: Build + draft release (macOS)
-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+      - name: Build + draft release (macOS, unsigned)
+        if: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.APPLE_CERTIFICATE == '' }}
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/desktop
+          tauriScript: bunx tauri
+          args: --bundles dmg,app
+          includeUpdaterJson: false
+          tagName: ${{ github.ref_name }}
+          releaseName: Sora ${{ github.ref_name }}
+          releaseDraft: true
+      - name: Build + draft release (macOS, signed)
+        if: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.APPLE_CERTIFICATE != '' }}
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
