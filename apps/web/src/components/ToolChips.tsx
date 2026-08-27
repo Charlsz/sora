@@ -86,7 +86,7 @@ export default function ToolChips({
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((c) => !c)}
-        className="-mx-1.5 flex w-fit items-center gap-1.5 rounded-control px-1.5 py-1 text-[12.5px] text-ink-2 transition-colors duration-100 hover:bg-hover-2"
+        className="-mx-1.5 flex w-fit items-center gap-1.5 rounded-control px-1.5 py-1 text-[12.5px] text-ink-2 transition-colors duration-100"
       >
         <svg
           width="12"
@@ -131,7 +131,7 @@ export default function ToolChips({
                     type="button"
                     aria-expanded={rowOpen}
                     onClick={() => toggleRow(row.id)}
-                    className="group/row -mx-[3px] flex h-7 w-[calc(100%+6px)] min-w-0 items-center gap-2 rounded-control px-[3px] text-left transition-colors duration-100 hover:bg-hover-2"
+                    className="group/row -mx-[3px] flex h-7 w-[calc(100%+6px)] min-w-0 items-center gap-2 rounded-control px-[3px] text-left transition-colors duration-100"
                   >
                     <span className="relative flex size-4 shrink-0 items-center justify-center text-ink-3">
                       <svg

@@ -24,6 +24,9 @@ export default function PluginsPanel({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [linkApp, setLinkApp] = useState<Record<string, string>>({});
+  const [composioLinks, setComposioLinks] = useState<
+    Array<{ slug: string; status: "ACTIVE" | "inactive" }>
+  >([]);
 
   const [bd, setBd] = useState<BdStatus | null>(null);
   const [bdSignup, setBdSignup] = useState("");
@@ -49,6 +52,17 @@ export default function PluginsPanel({
   async function refresh() {
     const data = await soraApi.plugins();
     setPlugins(data.plugins);
+    const composioReady = data.plugins.find((p) => p.id === "composio")?.configured;
+    if (composioReady) {
+      try {
+        const linked = await soraApi.composioConnections();
+        setComposioLinks(linked.connections ?? []);
+      } catch {
+        setComposioLinks([]);
+      }
+    } else {
+      setComposioLinks([]);
+    }
     const status = await soraApi.botdirectoryStatus();
     setBd(status);
     try {
@@ -295,16 +309,17 @@ export default function PluginsPanel({
         </h3>
         <ol className="mt-2 list-decimal space-y-1.5 pl-4 text-[12.5px] leading-relaxed text-ink-2">
           <li>
-            Create a free project at{" "}
+            Open{" "}
             <a
-              href="https://app.composio.dev"
+              href="https://dashboard.composio.dev"
               target="_blank"
               rel="noreferrer"
-              className="underline hover:text-ink"
+              className="underline"
             >
-              app.composio.dev
+              dashboard.composio.dev
             </a>{" "}
-            and copy the API key.
+            → Platform → Getting Started and copy the project API key (starts
+            with <span className="font-mono text-[12px]">ak_</span>).
           </li>
           <li>Paste the key below and save it (stays on this PC).</li>
           <li>
@@ -317,7 +332,7 @@ export default function PluginsPanel({
             type="password"
             autoComplete="off"
             spellCheck={false}
-            placeholder="Composio API key"
+            placeholder="ak_… Platform project API key"
             value={keys.composio ?? ""}
             onChange={(e) =>
               setKeys((prev) => ({ ...prev, composio: e.target.value }))
@@ -350,41 +365,87 @@ export default function PluginsPanel({
                   : "bg-field text-ink-3"
               }`}
             >
-              {composio?.configured ? "key saved" : "not set"}
+              {composio?.hint?.includes("needs ak_")
+                ? "replace key (need ak_)"
+                : composio?.configured
+                  ? "key saved"
+                  : "not set"}
             </span>
           </div>
         </div>
         {composio?.configured && (
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
-            <select
-              value={linkApp.composio ?? composio.apps[0] ?? "gmail"}
-              onChange={(e) =>
-                setLinkApp((prev) => ({
-                  ...prev,
-                  composio: e.target.value,
-                }))
-              }
-              className="h-8 rounded-control border border-line bg-field px-2 text-[12.5px] text-ink"
-            >
-              {composio.apps.map((app) => (
-                <option key={app} value={app}>
-                  {app}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              disabled={Boolean(busy?.startsWith("connect:composio"))}
-              onClick={() =>
-                void connect(
-                  "composio",
-                  linkApp.composio ?? composio.apps[0] ?? "gmail",
-                )
-              }
-              className="rounded-control bg-ink px-3 py-1.5 text-[12.5px] font-medium text-surface"
-            >
-              Link account
-            </button>
+          <div className="mt-3 flex flex-col gap-2 border-t border-line pt-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={linkApp.composio ?? composio.apps[0] ?? "gmail"}
+                onChange={(e) =>
+                  setLinkApp((prev) => ({
+                    ...prev,
+                    composio: e.target.value,
+                  }))
+                }
+                className="h-8 rounded-control border border-line bg-field px-2 text-[12.5px] text-ink"
+              >
+                {composio.apps.map((app) => (
+                  <option key={app} value={app}>
+                    {app === "twitter"
+                      ? "X (needs auth config)"
+                      : app === "googlecalendar"
+                        ? "Google Calendar"
+                        : app.charAt(0).toUpperCase() + app.slice(1)}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                disabled={Boolean(busy?.startsWith("connect:composio"))}
+                onClick={() =>
+                  void connect(
+                    "composio",
+                    linkApp.composio ?? composio.apps[0] ?? "gmail",
+                  )
+                }
+                className="rounded-control bg-ink px-3 py-1.5 text-[12.5px] font-medium text-surface"
+              >
+                Link account
+              </button>
+            </div>
+            {(linkApp.composio ?? composio.apps[0]) === "twitter" && (
+              <p className="text-[12px] leading-relaxed text-ink-3">
+                X has no Composio-managed login. Create an Auth Config for
+                Twitter in{" "}
+                <a
+                  href="https://dashboard.composio.dev/~/project/auth-configs"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline"
+                >
+                  the dashboard
+                </a>{" "}
+                with your X Developer app, then Link again. Prefer Gmail or
+                GitHub for a first connection.
+              </p>
+            )}
+            {composioLinks.some((c) => c.status === "ACTIVE") ? (
+              <ul className="mt-1 space-y-1 text-[12.5px] text-ink-2">
+                {composioLinks
+                  .filter((c) => c.status === "ACTIVE")
+                  .map((c) => (
+                    <li key={c.slug}>
+                      <span className="font-medium text-ink">
+                        {c.slug === "twitter"
+                          ? "X"
+                          : c.slug.charAt(0).toUpperCase() + c.slug.slice(1)}
+                      </span>
+                      <span className="text-ink-3"> · Connected (all bots)</span>
+                    </li>
+                  ))}
+              </ul>
+            ) : (
+              <p className="text-[12px] text-ink-3">
+                No apps linked yet. Link once — every teammate can use it.
+              </p>
+            )}
           </div>
         )}
       </section>

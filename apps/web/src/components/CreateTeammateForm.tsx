@@ -228,7 +228,7 @@ export default function CreateTeammateForm({
             href="https://botdirectory.ai"
             target="_blank"
             rel="noreferrer"
-            className="underline hover:text-ink-2"
+            className="underline"
           >
             botdirectory.ai
           </a>
@@ -251,7 +251,7 @@ export default function CreateTeammateForm({
             type="button"
             disabled={busy === "search"}
             onClick={() => void search()}
-            className="rounded-control bg-field px-3 py-1.5 text-[12.5px] font-medium text-ink-2 hover:bg-hover disabled:opacity-50"
+            className="rounded-control bg-field px-3 py-1.5 text-[12.5px] font-medium text-ink-2 disabled:opacity-50"
           >
             {busy === "search" ? "…" : "Search"}
           </button>
@@ -288,7 +288,7 @@ export default function CreateTeammateForm({
                   type="button"
                   disabled={busy === `copy:${bot.slug}`}
                   onClick={() => void copyListing(bot)}
-                  className="shrink-0 rounded-control bg-field px-2.5 py-1 text-[12px] font-medium text-ink-2 hover:bg-hover disabled:opacity-50"
+                  className="shrink-0 rounded-control bg-field px-2.5 py-1 text-[12px] font-medium text-ink-2 disabled:opacity-50"
                 >
                   {busy === `copy:${bot.slug}` ? "…" : "Copy prompt"}
                 </button>

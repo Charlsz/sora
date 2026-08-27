@@ -1,10 +1,5 @@
 import { useRef, useState } from "react";
-import {
-  DEFAULT_WALLPAPER_URL,
-  fileToWallpaperDataUrl,
-  restoreDefaultWallpaper,
-  type ThemeMode,
-} from "../appearance";
+import { fileToWallpaperDataUrl, type ThemeMode } from "../appearance";
 
 export default function AppearanceSettings({
   wallpaper,
@@ -20,7 +15,6 @@ export default function AppearanceSettings({
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const usingDefault = wallpaper === DEFAULT_WALLPAPER_URL;
 
   async function onFile(file: File | null) {
     if (!file) return;
@@ -40,58 +34,24 @@ export default function AppearanceSettings({
   return (
     <section className="rounded-card bg-surface p-3 shadow-card">
       <h3 className="text-[13px] font-semibold text-ink">Appearance</h3>
-      <p className="mt-0.5 text-[12px] text-ink-3">
-        Personal wallpaper. Dark images switch the UI to dark; light images
-        switch to light (when theme is Auto).
-      </p>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button
           type="button"
           disabled={busy}
           onClick={() => inputRef.current?.click()}
-          className="rounded-control bg-ink px-3 py-1.5 text-[12.5px] font-medium text-surface disabled:opacity-50"
+          className="cursor-pointer rounded-control bg-ink px-3 py-1.5 text-[12.5px] font-medium text-surface transition-transform duration-100 active:scale-[0.97] disabled:opacity-50"
         >
-          {busy
-            ? "Loading…"
-            : wallpaper
-              ? "Change wallpaper"
-              : "Add wallpaper"}
+          {busy ? "Loading…" : wallpaper ? "Change background" : "Add background"}
         </button>
-        {wallpaper && !usingDefault && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => {
-              restoreDefaultWallpaper();
-              void onWallpaper(DEFAULT_WALLPAPER_URL);
-            }}
-            className="rounded-control bg-field px-3 py-1.5 text-[12.5px] font-medium text-ink-2 hover:bg-hover disabled:opacity-50"
-          >
-            Sora default
-          </button>
-        )}
         {wallpaper && (
           <button
             type="button"
             disabled={busy}
             onClick={() => void onWallpaper(null)}
-            className="rounded-control bg-field px-3 py-1.5 text-[12.5px] font-medium text-ink-2 hover:bg-hover disabled:opacity-50"
+            className="cursor-pointer rounded-control bg-field px-3 py-1.5 text-[12.5px] font-medium text-ink-2 transition-transform duration-100 active:scale-[0.97] disabled:opacity-50"
           >
             Remove
-          </button>
-        )}
-        {!wallpaper && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => {
-              restoreDefaultWallpaper();
-              void onWallpaper(DEFAULT_WALLPAPER_URL);
-            }}
-            className="rounded-control bg-field px-3 py-1.5 text-[12.5px] font-medium text-ink-2 hover:bg-hover disabled:opacity-50"
-          >
-            Sora default
           </button>
         )}
         <input
@@ -103,24 +63,16 @@ export default function AppearanceSettings({
         />
       </div>
 
-      {wallpaper && (
-        <div
-          className="mt-3 h-24 overflow-hidden rounded-[10px] border border-line bg-cover bg-center"
-          style={{ backgroundImage: `url(${wallpaper})` }}
-          aria-hidden
-        />
-      )}
-
       <label className="mt-3 flex flex-col gap-1.5">
         <span className="text-[12px] font-medium text-ink-2">Theme</span>
         <select
           value={theme}
           onChange={(e) => onTheme(e.target.value as ThemeMode)}
-          className="h-9 rounded-control border border-line bg-field px-2.5 text-[13px] text-ink outline-none focus:border-line-strong"
+          className="h-9 cursor-pointer rounded-control border border-line bg-field px-2.5 text-[13px] text-ink outline-none focus:border-line-strong"
         >
-          <option value="auto">Auto (from wallpaper)</option>
           <option value="light">Light</option>
           <option value="dark">Dark</option>
+          <option value="auto">Auto</option>
         </select>
       </label>
 

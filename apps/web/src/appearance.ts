@@ -4,6 +4,8 @@ const WALLPAPER_KEY = "sora.wallpaper";
 const THEME_KEY = "sora.theme";
 const LEFT_PANEL_KEY = "sora.leftPanel";
 const RIGHT_PANEL_KEY = "sora.rightPanel";
+const LEFT_WIDTH_KEY = "sora.leftWidth";
+const RIGHT_WIDTH_KEY = "sora.rightWidth";
 /** User cleared wallpaper; do not fall back to the bundled default. */
 const WALLPAPER_CLEARED = "none";
 
@@ -16,6 +18,8 @@ export type AppearanceState = {
   theme: ThemeMode;
   leftPanelOpen: boolean;
   rightPanelOpen: boolean;
+  leftWidth: number;
+  rightWidth: number;
 };
 
 function readBool(key: string, fallback: boolean): boolean {
@@ -36,13 +40,36 @@ function writeBool(key: string, value: boolean): void {
   }
 }
 
+function readNumber(key: string, fallback: number): number {
+  try {
+    const v = localStorage.getItem(key);
+    if (v == null) return fallback;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeNumber(key: string, value: number): void {
+  try {
+    localStorage.setItem(key, String(Math.round(value)));
+  } catch {
+    // ignore
+  }
+}
+
 export function loadAppearance(): AppearanceState {
-  let wallpaper: string | null = DEFAULT_WALLPAPER_URL;
-  let theme: ThemeMode = "auto";
+  let wallpaper: string | null = null;
+  let theme: ThemeMode = "light";
   try {
     const stored = localStorage.getItem(WALLPAPER_KEY);
     if (stored === WALLPAPER_CLEARED) wallpaper = null;
     else if (stored && stored.startsWith("data:image/")) wallpaper = stored;
+    else if (stored) {
+      localStorage.setItem(WALLPAPER_KEY, WALLPAPER_CLEARED);
+      wallpaper = null;
+    }
     const t = localStorage.getItem(THEME_KEY);
     if (t === "light" || t === "dark" || t === "auto") theme = t;
   } catch {
@@ -53,6 +80,8 @@ export function loadAppearance(): AppearanceState {
     theme,
     leftPanelOpen: readBool(LEFT_PANEL_KEY, true),
     rightPanelOpen: readBool(RIGHT_PANEL_KEY, true),
+    leftWidth: Math.min(420, Math.max(200, readNumber(LEFT_WIDTH_KEY, 260))),
+    rightWidth: Math.min(480, Math.max(260, readNumber(RIGHT_WIDTH_KEY, 300))),
   };
 }
 
@@ -62,14 +91,14 @@ export function saveWallpaper(dataUrl: string | null): void {
     else localStorage.setItem(WALLPAPER_KEY, dataUrl);
   } catch {
     throw new Error(
-      "Couldn’t save that image locally (too large or storage blocked).",
+      "Could not save that image locally (too large or storage blocked).",
     );
   }
 }
 
 export function restoreDefaultWallpaper(): void {
   try {
-    localStorage.removeItem(WALLPAPER_KEY);
+    localStorage.setItem(WALLPAPER_KEY, WALLPAPER_CLEARED);
   } catch {
     // ignore
   }
@@ -89,6 +118,14 @@ export function saveLeftPanelOpen(open: boolean): void {
 
 export function saveRightPanelOpen(open: boolean): void {
   writeBool(RIGHT_PANEL_KEY, open);
+}
+
+export function saveLeftWidth(width: number): void {
+  writeNumber(LEFT_WIDTH_KEY, width);
+}
+
+export function saveRightWidth(width: number): void {
+  writeNumber(RIGHT_WIDTH_KEY, width);
 }
 
 /** Average luminance 0 to 1 from an image URL or data URL. */
@@ -124,7 +161,7 @@ export function measureImageLuminance(src: string): Promise<number> {
         reject(err);
       }
     };
-    img.onerror = () => reject(new Error("Couldn’t read image"));
+    img.onerror = () => reject(new Error("Could not read image"));
     img.src = src;
   });
 }
@@ -155,7 +192,7 @@ export function fileToWallpaperDataUrl(file: File): Promise<string> {
       return;
     }
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Couldn’t read file"));
+    reader.onerror = () => reject(new Error("Could not read file"));
     reader.onload = () => {
       const raw = String(reader.result ?? "");
       const img = new Image();
@@ -180,7 +217,7 @@ export function fileToWallpaperDataUrl(file: File): Promise<string> {
           reject(err instanceof Error ? err : new Error(String(err)));
         }
       };
-      img.onerror = () => reject(new Error("Couldn’t decode image"));
+      img.onerror = () => reject(new Error("Could not decode image"));
       img.src = raw;
     };
     reader.readAsDataURL(file);

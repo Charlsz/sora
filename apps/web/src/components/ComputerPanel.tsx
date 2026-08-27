@@ -275,7 +275,7 @@ export default function ComputerPanel({
               <button
                 type="button"
                 onClick={() => setControlUrl(null)}
-                className="text-[12px] font-medium text-ink-3 hover:text-ink"
+                className="text-[12px] font-medium text-ink-3"
               >
                 Exit
               </button>
@@ -297,7 +297,7 @@ export default function ComputerPanel({
               type="button"
               disabled={busy}
               onClick={() => void openDesktop()}
-              className="absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 rounded-full bg-surface/95 px-3.5 py-1.5 text-[13px] font-medium text-ink shadow-raised backdrop-blur-sm hover:bg-surface disabled:opacity-50"
+              className="absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 rounded-full bg-surface/95 px-3.5 py-1.5 text-[13px] font-medium text-ink shadow-raised backdrop-blur-sm disabled:opacity-50"
             >
               {busy ? "Opening…" : "Open"}
               <svg
@@ -329,7 +329,7 @@ export default function ComputerPanel({
                 } ${
                   mode === opt.id
                     ? "bg-field text-ink"
-                    : "text-ink-3 hover:bg-hover hover:text-ink-2"
+                    : "text-ink-3"
                 }`}
               >
                 {opt.label}
@@ -387,7 +387,7 @@ export default function ComputerPanel({
             type="button"
             aria-label="Close computer"
             onClick={onClose}
-            className="rounded-control px-2 py-1 text-[13px] text-ink-3 hover:bg-hover hover:text-ink"
+            className="rounded-control px-2 py-1 text-[13px] text-ink-3"
           >
             ✕
           </button>
@@ -413,7 +413,7 @@ export default function ComputerPanel({
                 type="button"
                 disabled={busy}
                 onClick={() => void openDesktop()}
-                className="absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 rounded-full bg-surface/95 px-3.5 py-1.5 text-[13px] font-medium text-ink shadow-raised backdrop-blur-sm hover:bg-surface disabled:opacity-50"
+                className="absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 rounded-full bg-surface/95 px-3.5 py-1.5 text-[13px] font-medium text-ink shadow-raised backdrop-blur-sm disabled:opacity-50"
               >
                 {busy ? "Opening…" : "Open"}
                 <svg
@@ -442,7 +442,7 @@ export default function ComputerPanel({
               type="button"
               disabled={busy}
               onClick={() => setControlUrl(null)}
-              className="w-full rounded-control border border-line bg-field px-3 py-2 text-[13px] font-medium text-ink hover:bg-hover disabled:opacity-50"
+              className="w-full rounded-control border border-line bg-field px-3 py-2 text-[13px] font-medium text-ink disabled:opacity-50"
             >
               Exit control
             </button>
@@ -475,7 +475,7 @@ export default function ComputerPanel({
               } ${
                 mode === opt.id
                   ? "bg-field text-ink"
-                  : "text-ink-3 hover:bg-hover hover:text-ink-2"
+                  : "text-ink-3"
               }`}
             >
               {opt.label}

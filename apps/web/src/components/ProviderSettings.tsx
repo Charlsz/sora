@@ -128,7 +128,7 @@ export default function ProviderSettings({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-control px-2 py-1 text-[12.5px] text-ink-2 hover:bg-hover"
+            className="rounded-control px-2 py-1 text-[12.5px] text-ink-2"
           >
             Close
           </button>
@@ -162,7 +162,7 @@ export default function ProviderSettings({
               type="button"
               disabled={busy === "test"}
               onClick={() => void testModel()}
-              className="rounded-control bg-field px-3 py-1.5 text-[12.5px] font-medium text-ink-2 hover:bg-hover disabled:opacity-50"
+              className="rounded-control bg-field px-3 py-1.5 text-[12.5px] font-medium text-ink-2 disabled:opacity-50"
             >
               Test connection
             </button>
@@ -187,7 +187,7 @@ export default function ProviderSettings({
                         href={p.docsUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="text-[11px] text-ink-3 underline hover:text-ink-2"
+                        className="text-[11px] text-ink-3 underline"
                       >
                         Docs
                       </a>
@@ -255,7 +255,7 @@ export default function ProviderSettings({
                       type="button"
                       disabled={busy === p.id}
                       onClick={() => void clearProvider(p.id)}
-                      className="rounded-control px-2 py-1.5 text-[12.5px] text-ink-3 hover:bg-hover hover:text-ink"
+                      className="rounded-control px-2 py-1.5 text-[12.5px] text-ink-3"
                     >
                       Clear
                     </button>
@@ -273,7 +273,7 @@ export default function ProviderSettings({
                       type="button"
                       disabled={busy === p.id}
                       onClick={() => void saveProvider(p.id)}
-                      className="rounded-control bg-field px-2.5 py-1 text-[12px] text-ink-2 hover:bg-hover"
+                      className="rounded-control bg-field px-2.5 py-1 text-[12px] text-ink-2"
                     >
                       Save URL
                     </button>

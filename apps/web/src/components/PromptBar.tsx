@@ -256,7 +256,7 @@ export default function PromptBar({
                   onConnect?.(row.key);
                   setPlusOpen(false);
                 }}
-                className="relative z-10 flex h-9 w-full items-center gap-2.5 rounded-[6px] px-2 text-left hover:bg-hover"
+                className="relative z-10 flex h-9 w-full items-center gap-2.5 rounded-[6px] px-2 text-left"
               >
                 <span className="shrink-0 text-[12.5px] font-medium text-ink">
                   {row.name}
@@ -278,7 +278,7 @@ export default function PromptBar({
                 onManageConnections?.();
                 setPlusOpen(false);
               }}
-              className="mt-1 flex h-8 w-full items-center border-t border-line px-2 text-left text-[12px] font-medium text-ink-2 hover:bg-hover"
+              className="mt-1 flex h-8 w-full items-center border-t border-line px-2 text-left text-[12px] font-medium text-ink-2"
             >
               Manage all connections…
             </button>
@@ -429,7 +429,7 @@ export default function PromptBar({
                 setPlusOpen((c) => !c);
                 inputRef.current?.focus();
               }}
-              className={`flex size-7 shrink-0 items-center justify-center justify-self-start border border-line text-ink transition-[background-color,color,transform] duration-150 hover:bg-hover active:scale-[0.94] disabled:opacity-40 ${
+              className={`flex size-7 shrink-0 items-center justify-center justify-self-start border border-line text-ink transition-[background-color,color,transform] duration-150 active:scale-[0.94] disabled:opacity-40 ${
                 pill ? "rounded-full" : "rounded-[8px]"
               } ${plusOpen ? "bg-hover border-line-strong" : "bg-field"} ${expanded ? "col-start-1 row-start-2" : "col-start-1 row-start-1"}`}
             >
@@ -504,7 +504,7 @@ export default function PromptBar({
                   setPlusOpen(false);
                   setModelOpen((c) => !c);
                 }}
-                className={`flex h-7 shrink-0 items-center gap-1 px-1.5 text-[12px] font-medium text-ink-2 transition-colors duration-150 hover:bg-hover hover:text-ink disabled:opacity-40 ${
+                className={`flex h-7 shrink-0 items-center gap-1 px-1.5 text-[12px] font-medium text-ink-2 transition-colors duration-150 disabled:opacity-40 ${
                   pill ? "rounded-full" : "rounded-[8px]"
                 } ${expanded ? "col-start-2 row-start-2 justify-self-start" : "col-start-3 row-start-1"}`}
               >

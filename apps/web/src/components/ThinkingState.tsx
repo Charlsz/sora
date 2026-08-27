@@ -58,7 +58,7 @@ export default function ThinkingState({
         onClick={() =>
           setManualExpanded((current) => !(current ?? autoExpanded))
         }
-        className="-mx-1.5 flex w-fit items-center gap-2 rounded-control px-1.5 py-1 transition-colors duration-100 hover:bg-hover-2"
+        className="-mx-1.5 flex w-fit items-center gap-2 rounded-control px-1.5 py-1 transition-colors duration-100"
       >
         <svg
           width="16"

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import {
   connectEvents,
   soraApi,
@@ -10,12 +10,12 @@ import {
 } from "./api";
 import {
   applyDocumentTheme,
-  DEFAULT_WALLPAPER_URL,
   loadAppearance,
   measureImageLuminance,
-  restoreDefaultWallpaper,
   saveLeftPanelOpen,
+  saveLeftWidth,
   saveRightPanelOpen,
+  saveRightWidth,
   saveTheme,
   saveWallpaper,
   type ThemeMode,
@@ -25,7 +25,9 @@ import AgentsPanel from "./components/AgentsPanel";
 import AppearanceSettings from "./components/AppearanceSettings";
 import BotMark from "./components/BotMark";
 import ComputerPanel from "./components/ComputerPanel";
+import CapabilitiesPanel from "./components/CapabilitiesPanel";
 import ChatRoutines from "./components/ChatRoutines";
+import ConfirmDialog from "./components/ConfirmDialog";
 import Onboarding from "./components/Onboarding";
 import PluginsPanel from "./components/PluginsPanel";
 import PromptBar from "./components/PromptBar";
@@ -36,6 +38,7 @@ import StreamingText from "./components/StreamingText";
 import MarkdownMessage from "./components/MarkdownMessage";
 import type { ToolRow } from "./components/ToolChips";
 import { isOpenDesktopLayout } from "./openLayout";
+import { isReservedTeammateName } from "./teammateNames";
 
 type WorkerStatus = "idle" | "working" | "needs_you" | "done" | "failed";
 
@@ -60,6 +63,14 @@ function shortModelName(model: string): string {
 
 function friendlyToolLabel(raw: string): string {
   const n = raw.toLowerCase();
+  if (n.includes("composio_list") || n.includes("list_connections"))
+    return "Checking connected apps";
+  if (n.includes("composio_search")) return "Finding app actions";
+  if (n.includes("composio_execute") || n.includes("composio"))
+    return "Using connected app";
+  if (n.includes("agent_message") || n === "agent.message")
+    return "Talking to teammate";
+  if (n.includes("delegate")) return "Delegating to teammate";
   if (n.includes("web") || n.includes("search") || n.includes("browse"))
     return "Searching the web";
   if (n.includes("browser") || n.includes("navigate")) return "Using the browser";
@@ -100,6 +111,8 @@ export function App() {
   const [leftPanelOpen, setLeftPanelOpen] = useState(
     initialAppearance.leftPanelOpen,
   );
+  const [leftWidth, setLeftWidth] = useState(initialAppearance.leftWidth);
+  const [rightWidth, setRightWidth] = useState(initialAppearance.rightWidth);
   const [wallpaper, setWallpaper] = useState<string | null>(
     initialAppearance.wallpaper,
   );
@@ -111,11 +124,17 @@ export function App() {
   );
   const [vmControlUrl, setVmControlUrl] = useState<string | null>(null);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [connectApps, setConnectApps] = useState<
     Array<{ key: string; name: string; desc: string }>
   >([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const headerMenuRef = useRef<HTMLDivElement>(null);
+  const selectedRef = useRef<string | null>(null);
+  const agentsRef = useRef<Agent[]>([]);
+  selectedRef.current = selected;
+  agentsRef.current = agents;
 
   const active = useMemo(
     () => agents.find((a) => a.slug === selected) ?? null,
@@ -151,26 +170,44 @@ export function App() {
         Boolean(providers.providers.find((p) => p.id === "e2b")?.configured),
       );
     }
-    setSelected((prev) => prev ?? a[0]?.slug ?? null);
+    setSelected((prev) => {
+      if (prev && a.some((agent) => agent.slug === prev)) return prev;
+      return a[0]?.slug ?? null;
+    });
     try {
       const plug = await soraApi.plugins();
       const composio = plug.plugins.find((p) => p.id === "composio");
+      const linked = composio?.configured
+        ? await soraApi.composioConnections().catch(() => null)
+        : null;
+      const active = new Set(
+        (linked?.connections ?? [])
+          .filter((c) => c.status === "ACTIVE")
+          .map((c) => c.slug.toLowerCase()),
+      );
       const apps = (composio?.apps?.length
         ? composio.apps
         : [
             "gmail",
-            "googlecalendar",
-            "slack",
-            "twitter",
             "github",
+            "slack",
+            "googlecalendar",
+            "twitter",
             "notion",
           ]
       ).map((app) => ({
         key: app,
-        name: app === "twitter" ? "X" : app === "googlecalendar" ? "Google Calendar" : app.charAt(0).toUpperCase() + app.slice(1),
-        desc: composio?.configured
-          ? "Link via browser login"
-          : "Needs Composio key first",
+        name:
+          app === "twitter"
+            ? "X"
+            : app === "googlecalendar"
+              ? "Google Calendar"
+              : app.charAt(0).toUpperCase() + app.slice(1),
+        desc: !composio?.configured
+          ? "Needs Composio key first"
+          : active.has(app.toLowerCase())
+            ? "Connected"
+            : "Link via browser login",
       }));
       setConnectApps(apps);
     } catch {
@@ -187,7 +224,33 @@ export function App() {
       })
       .catch(() => setApiOk(false));
 
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
+
+  useEffect(() => {
     return connectEvents((event) => {
+      const viewing = selectedRef.current;
+      const eventSlug =
+        typeof event.data?.slug === "string"
+          ? event.data.slug
+          : typeof event.data?.agentSlug === "string"
+            ? event.data.agentSlug
+            : null;
+      const agentLabel = (slug: string | null | undefined) => {
+        if (!slug) return undefined;
+        if (viewing && slug === viewing) return undefined;
+        return (
+          agentsRef.current.find((a) => a.slug === slug)?.name ?? slug
+        );
+      };
+
       if (event.type === "permission.pending") {
         const data = event.data ?? {};
         if (typeof data.requestId === "string") {
@@ -209,18 +272,76 @@ export function App() {
         }
       } else if (event.type === "permission.requested") {
         void soraApi.pendingPermissions().then(setPending).catch(() => {});
+      } else if (event.type === "agent.messaged" || event.type === "agent.delegated") {
+        const from =
+          String(event.data?.fromName ?? event.data?.from ?? "Teammate");
+        const to = String(event.data?.toName ?? event.data?.to ?? "Teammate");
+        const message = String(
+          event.data?.message ?? event.data?.task ?? "",
+        );
+        const statusRaw = String(event.data?.status ?? "");
+        const deliver = String(event.data?.deliver ?? "run");
+        const status =
+          statusRaw === "completed"
+            ? "completed"
+            : deliver === "queue"
+              ? "queued"
+              : "started";
+        const reply =
+          typeof event.data?.reply === "string" ? event.data.reply : undefined;
+        setLive((prev) => {
+          if (status === "completed") {
+            const idx = [...prev]
+              .reverse()
+              .findIndex(
+                (e) =>
+                  e.kind === "handoff" &&
+                  e.status === "started" &&
+                  e.to === to &&
+                  e.from === from,
+              );
+            if (idx >= 0) {
+              const real = prev.length - 1 - idx;
+              return prev.map((e, i) =>
+                i === real && e.kind === "handoff"
+                  ? { ...e, status: "completed", reply }
+                  : e,
+              );
+            }
+          }
+          return [
+            ...prev,
+            {
+              kind: "handoff",
+              id: event.id,
+              from,
+              to,
+              message,
+              reply,
+              status,
+            },
+          ];
+        });
       } else if (event.type === "agent.text.started") {
         const streamId = String(event.data?.streamId ?? event.id);
-        setLive((prev) => [
-          ...prev,
-          {
-            kind: "assistant",
-            id: streamId,
-            streamId,
-            content: "",
-            streaming: true,
-          },
-        ]);
+        setLive((prev) => {
+          // One live assistant bubble per turn — drop prior streamed drafts so
+          // tool rounds don't leave duplicate full replies in the transcript.
+          const kept = prev.filter(
+            (e) => !(e.kind === "assistant" && e.streamId),
+          );
+          return [
+            ...kept,
+            {
+              kind: "assistant" as const,
+              id: streamId,
+              streamId,
+              content: "",
+              streaming: true,
+              fromAgent: agentLabel(eventSlug),
+            },
+          ];
+        });
       } else if (event.type === "agent.text.delta") {
         const streamId = String(event.data?.streamId ?? "");
         const delta = String(event.data?.delta ?? "");
@@ -243,17 +364,33 @@ export function App() {
         );
       } else if (event.type === "agent.completed") {
         const cid = event.data?.conversationId;
-        if (typeof cid === "string") setConversationId(cid);
+        if (
+          typeof cid === "string" &&
+          (!viewing || !eventSlug || eventSlug === viewing)
+        ) {
+          setConversationId(cid);
+        }
       } else if (event.type === "agent.tool.started") {
-        setLive((prev) => [
-          ...prev,
-          {
-            kind: "tool",
-            id: event.id,
-            name: String(event.data?.tool ?? "tool"),
-            status: "started",
-          },
-        ]);
+        setLive((prev) => {
+          // Hide empty draft bubbles so the chip sits under real text, not a blank.
+          const cleaned = prev.filter(
+            (e) =>
+              !(
+                e.kind === "assistant" &&
+                e.streamId &&
+                !e.content.trim()
+              ),
+          );
+          return [
+            ...cleaned,
+            {
+              kind: "tool" as const,
+              id: event.id,
+              name: String(event.data?.tool ?? "tool"),
+              status: "started" as const,
+            },
+          ];
+        });
       } else if (event.type === "agent.tool.completed") {
         setLive((prev) =>
           prev.map((e) =>
@@ -282,6 +419,12 @@ export function App() {
               : e,
           ),
         );
+      } else if (
+        event.type === "agent.created" ||
+        event.type === "agent.updated" ||
+        event.type === "agent.deleted"
+      ) {
+        void refresh();
       }
     });
   }, []);
@@ -324,32 +467,69 @@ export function App() {
   }, [leftPanelOpen]);
 
   useEffect(() => {
+    saveLeftWidth(leftWidth);
+  }, [leftWidth]);
+
+  useEffect(() => {
+    saveRightWidth(rightWidth);
+  }, [rightWidth]);
+
+  useEffect(() => {
     saveRightPanelOpen(computerOpen);
-    // Hiding the rail unmounts ComputerPanel — drop Open layout so chat
-    // doesn't stay pinned at 380px with an empty desktop column.
+    // Hiding the rail unmounts ComputerPanel. Drop Open layout so chat
+    // does not stay pinned at 380px with an empty desktop column.
     if (!computerOpen) setVmControlUrl(null);
   }, [computerOpen]);
+
+  function startResize(
+    side: "left" | "right",
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startW = side === "left" ? leftWidth : rightWidth;
+    const el = event.currentTarget;
+    el.setPointerCapture(event.pointerId);
+    const onMove = (ev: PointerEvent) => {
+      const dx = ev.clientX - startX;
+      if (side === "left") {
+        setLeftWidth(Math.min(420, Math.max(200, startW + dx)));
+      } else {
+        setRightWidth(Math.min(480, Math.max(260, startW - dx)));
+      }
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
 
   async function loadConversation(id: string) {
     setConversationId(id);
     const msgs = await soraApi.messages(id);
-    setLive(
-      msgs
-        .filter((m) => m.role === "user" || m.role === "assistant")
-        .map((m) =>
-          m.role === "user"
-            ? {
-                kind: "user" as const,
-                id: m.id,
-                content: m.content,
-              }
-            : {
-                kind: "assistant" as const,
-                id: m.id,
-                content: m.content,
-              },
-        ),
-    );
+    const entries: LiveEntry[] = [];
+    for (const m of msgs) {
+      if (m.role === "user") {
+        entries.push({ kind: "user", id: m.id, content: m.content });
+        continue;
+      }
+      if (m.role === "assistant") {
+        const text = (m.content ?? "").trim();
+        if (!text || text === "(empty response)") continue;
+        const prev = entries[entries.length - 1];
+        // Collapse consecutive identical assistant replies (legacy duplicate bug).
+        if (
+          prev?.kind === "assistant" &&
+          prev.content.trim() === text
+        ) {
+          continue;
+        }
+        entries.push({ kind: "assistant", id: m.id, content: m.content });
+      }
+    }
+    setLive(entries);
   }
 
   useEffect(() => {
@@ -475,6 +655,53 @@ export function App() {
     }
   }
 
+  async function renameActiveTeammate() {
+    if (!active) return;
+    setHeaderMenuOpen(false);
+    const next = window.prompt("Teammate name", active.name);
+    if (next == null) return;
+    const name = next.trim();
+    if (!name || name === active.name) return;
+    if (isReservedTeammateName(name)) {
+      setError("That name is reserved for the app. Pick a teammate name.");
+      return;
+    }
+    setError(null);
+    try {
+      await soraApi.updateAgent(active.slug, { name });
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  function requestDeleteActiveTeammate() {
+    if (!active) return;
+    setHeaderMenuOpen(false);
+    setDeleteConfirmOpen(true);
+  }
+
+  async function confirmDeleteActiveTeammate() {
+    if (!active || deleteBusy) return;
+    const slug = active.slug;
+    setDeleteBusy(true);
+    setError(null);
+    try {
+      await soraApi.deleteAgent(slug);
+      setDeleteConfirmOpen(false);
+      setLive([]);
+      setChatTitle(null);
+      setConversationId(null);
+      setSelected(null);
+      await refresh();
+      setNav("chats");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
+
   async function runWithTeammate(
     slug: string,
     text: string,
@@ -522,24 +749,15 @@ export function App() {
       });
       setConversationId(result.conversationId);
       setLive((prev) => {
-        const hasStreamed = prev.some(
-          (e) => e.kind === "assistant" && e.streamId,
+        // Keep users/tools/handoffs; collapse every streamed assistant into one final reply.
+        // (Previously we rewrote ALL streamed assistants to result.reply, which duplicated the answer.)
+        const kept = prev.filter(
+          (e) => !(e.kind === "assistant" && e.streamId),
         );
-        if (hasStreamed) {
-          return prev.map((e) =>
-            e.kind === "assistant" && e.streamId
-              ? {
-                  ...e,
-                  content: result.reply || e.content,
-                  streaming: false,
-                }
-              : e,
-          );
-        }
         return [
-          ...prev,
+          ...kept,
           {
-            kind: "assistant",
+            kind: "assistant" as const,
             id: crypto.randomUUID(),
             content: result.reply,
           },
@@ -619,27 +837,6 @@ export function App() {
   }
 
   const showChatChrome = nav === "chats";
-  const statusLabel =
-    workerStatus === "working"
-      ? "Working"
-      : workerStatus === "needs_you"
-        ? "Needs you"
-        : workerStatus === "done"
-          ? "Done"
-          : workerStatus === "failed"
-            ? "Failed"
-            : "Ready";
-  const statusDot =
-    workerStatus === "working"
-      ? "bg-accent animate-pulse"
-      : workerStatus === "needs_you"
-        ? "bg-orange"
-        : workerStatus === "failed"
-          ? "bg-red"
-          : "bg-green";
-  const modelLabel = shortModelName(
-    active?.model ?? (defaultModel || "Model"),
-  );
 
   return (
     <div
@@ -656,70 +853,40 @@ export function App() {
     >
       {wallpaper && (
         <div
-          className="pointer-events-none absolute inset-0 bg-page/35"
+          className="pointer-events-none absolute inset-0 bg-page/45"
           aria-hidden
         />
       )}
       <div className="relative z-10 flex h-full min-h-0 w-full">
-      {!leftPanelOpen && (
-        <button
-          type="button"
-          aria-label="Show teammates panel"
-          title="Show teammates"
-          onClick={() => setLeftPanelOpen(true)}
-          className="absolute top-3 left-3 z-30 flex size-9 items-center justify-center rounded-[10px] border border-line bg-panel/90 text-ink-2 shadow-raised backdrop-blur-md hover:bg-hover hover:text-ink"
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden
-          >
-            <rect x="3" y="4" width="18" height="16" rx="2" />
-            <path d="M9 4v16" />
-            <path d="M13 9l3 3-3 3" />
-          </svg>
-        </button>
-      )}
       <SidebarNav
         fill
-        brand={undefined}
-        monogram={undefined}
         displayName={displayName}
         activeId={nav === "chats" ? activeListId : null}
         activeNav={nav}
         onNavigate={setNav}
-        online={apiOk}
-        open={leftPanelOpen}
-        onOpenChange={setLeftPanelOpen}
+        width={leftWidth}
         teammates={sidebarTeammates}
-        moreItems={[
-          { key: "routines", label: "Schedules" },
-          { key: "agents", label: "Manage teammates" },
-          { key: "plugins", label: "Connected apps" },
-          { key: "settings", label: "Connections" },
-        ]}
-        footerLabel="Settings"
-        onFooterClick={() => setNav("settings")}
+        onPlugins={() => setNav("plugins")}
+        onSettings={() => setNav("settings")}
         onNewTeammate={() => setNav("agents")}
-        onPick={(id, label) => {
-          if (id.startsWith("agent:")) {
-            setSelected(id.slice(6));
-            setNav("chats");
-            setChatTitle(label);
-            setLive([]);
-            setConversationId(null);
-          }
+        onPick={(id) => {
+          if (!id.startsWith("agent:")) return;
+          const slug = id.slice(6);
+          setNav("chats");
+          if (slug === selected) return;
+          setSelected(slug);
         }}
+      />
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize teammates panel"
+        onPointerDown={(e) => startResize("left", e)}
+        className="w-1 shrink-0 cursor-col-resize bg-transparent"
       />
 
       <main
-        className={`flex min-h-0 flex-col bg-panel/85 backdrop-blur-md ${
+        className={`flex min-h-0 flex-col bg-panel/80 ${
           isOpenDesktopLayout(computerOpen, vmControlUrl, showChatChrome)
             ? "w-[380px] shrink-0 border-r border-line"
             : "min-w-0 flex-1"
@@ -742,21 +909,11 @@ export function App() {
                   : nav === "agents"
                     ? "New teammate"
                     : nav === "plugins"
-                      ? "Connected apps"
+                      ? "Plugin"
                       : nav === "settings"
-                        ? "Connections"
+                        ? "Settings"
                         : (active?.name ?? "Pick a teammate")}
               </h1>
-              {showChatChrome && active && (
-                <p className="mt-0.5 flex items-center gap-1.5 text-[12px] text-ink-3">
-                  <span
-                    className={`size-1.5 shrink-0 rounded-full ${statusDot}`}
-                  />
-                  {statusLabel}
-                  <span className="text-ink-3">·</span>
-                  {modelLabel}
-                </p>
-              )}
             </div>
           </div>
           <div className="flex items-center gap-1.5">
@@ -765,21 +922,35 @@ export function App() {
                 <button
                   type="button"
                   onClick={() => setComputerOpen((o) => !o)}
-                  className={`rounded-control px-2.5 py-1.5 text-[12px] font-medium ${
+                  className={`flex size-8 cursor-pointer items-center justify-center rounded-control transition-transform duration-100 active:scale-[0.96] ${
                     computerOpen
                       ? "bg-field text-ink"
-                      : "bg-field text-ink-2 hover:bg-hover"
+                      : "bg-field text-ink-2"
                   }`}
-                  title="Computer & routines"
+                  title="Computer"
+                  aria-label={computerOpen ? "Hide computer" : "Show computer"}
                 >
-                  {computerOpen ? "Hide panel" : "Show panel"}
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden
+                  >
+                    <rect x="3" y="4" width="18" height="12" rx="2" />
+                    <path d="M8 20h8M12 16v4" />
+                  </svg>
                 </button>
                 <div className="relative" ref={headerMenuRef}>
                   <button
                     type="button"
                     aria-label="More actions"
                     onClick={() => setHeaderMenuOpen((o) => !o)}
-                    className="flex size-8 items-center justify-center rounded-control bg-field text-ink-2 hover:bg-hover"
+                    className="flex size-8 cursor-pointer items-center justify-center rounded-control bg-field text-ink-2 transition-transform duration-100 active:scale-[0.96]"
                   >
                     ···
                   </button>
@@ -794,7 +965,7 @@ export function App() {
                           setError(null);
                           setHeaderMenuOpen(false);
                         }}
-                        className="flex h-9 w-full items-center rounded-[8px] px-2.5 text-left text-[13px] text-ink-2 hover:bg-hover"
+                        className="flex h-9 w-full items-center rounded-[8px] px-2.5 text-left text-[13px] text-ink-2"
                       >
                         New task
                       </button>
@@ -806,7 +977,7 @@ export function App() {
                           !toolRows.some((t) => t.status === "completed")
                         }
                         onClick={() => void saveChatAsRoutine()}
-                        className="flex h-9 w-full items-center rounded-[8px] px-2.5 text-left text-[13px] text-ink-2 hover:bg-hover disabled:opacity-40"
+                        className="flex h-9 w-full items-center rounded-[8px] px-2.5 text-left text-[13px] text-ink-2 disabled:opacity-40"
                       >
                         Save as schedule
                       </button>
@@ -816,9 +987,17 @@ export function App() {
                           setHeaderMenuOpen(false);
                           setNav("agents");
                         }}
-                        className="flex h-9 w-full items-center rounded-[8px] px-2.5 text-left text-[13px] text-ink-2 hover:bg-hover"
+                        className="flex h-9 w-full items-center rounded-[8px] px-2.5 text-left text-[13px] text-ink-2"
                       >
                         Manage teammate
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!active}
+                        onClick={() => void renameActiveTeammate()}
+                        className="flex h-9 w-full items-center rounded-[8px] px-2.5 text-left text-[13px] text-ink-2 disabled:opacity-40"
+                      >
+                        Rename
                       </button>
                       {(active
                         ? [
@@ -853,11 +1032,19 @@ export function App() {
                                 ),
                               );
                           }}
-                          className="flex h-9 w-full items-center rounded-[8px] px-2.5 text-left text-[13px] text-ink-2 hover:bg-hover"
+                          className="flex h-9 w-full items-center rounded-[8px] px-2.5 text-left text-[13px] text-ink-2"
                         >
-                          Model · {m.name}
+                          Model {m.name}
                         </button>
                       ))}
+                      <button
+                        type="button"
+                        disabled={!active}
+                        onClick={() => requestDeleteActiveTeammate()}
+                        className="flex h-9 w-full items-center rounded-[8px] px-2.5 text-left text-[13px] text-red disabled:opacity-40"
+                      >
+                        Delete
+                      </button>
                     </div>
                   )}
                 </div>
@@ -881,11 +1068,6 @@ export function App() {
                   if (!dataUrl) {
                     saveWallpaper(null);
                     setWallpaper(null);
-                    return;
-                  }
-                  if (dataUrl === DEFAULT_WALLPAPER_URL) {
-                    restoreDefaultWallpaper();
-                    setWallpaper(DEFAULT_WALLPAPER_URL);
                     return;
                   }
                   saveWallpaper(dataUrl);
@@ -940,16 +1122,6 @@ export function App() {
                 </div>
               )}
 
-              {pending.map((req) => (
-                <ApprovalCard
-                  key={req.requestId}
-                  request={req}
-                  onRespond={(decision, options) =>
-                    respondPermission(req.requestId, decision, options)
-                  }
-                />
-              ))}
-
               {live.map((entry) => {
                 if (entry.kind === "user") {
                   return (
@@ -961,9 +1133,16 @@ export function App() {
                   );
                 }
                 if (entry.kind === "assistant") {
+                  // Hide empty mid-tool stream bubbles; keep the latest streaming one visible.
+                  if (!entry.content.trim() && !entry.streaming) return null;
                   return (
                     <div key={entry.id} className="flex justify-start">
                       <div className="max-w-[92%] rounded-[18px] bg-inset px-3.5 py-2.5">
+                        {entry.fromAgent ? (
+                          <p className="mb-1 text-[11px] font-medium tracking-wide text-ink-3">
+                            {entry.fromAgent}
+                          </p>
+                        ) : null}
                         {entry.streaming ? (
                           <StreamingText
                             text={entry.content}
@@ -974,6 +1153,33 @@ export function App() {
                           <MarkdownMessage text={entry.content} />
                         )}
                       </div>
+                    </div>
+                  );
+                }
+                if (entry.kind === "handoff") {
+                  const waiting = entry.status === "started";
+                  return (
+                    <div
+                      key={entry.id}
+                      className="rounded-[12px] border border-line bg-field/60 px-3 py-2.5 text-[13px]"
+                    >
+                      <p className="font-medium text-ink">
+                        {entry.from} → {entry.to}
+                        {waiting ? "…" : entry.status === "queued" ? " (note)" : ""}
+                      </p>
+                      {entry.message ? (
+                        <p className="mt-1 text-ink-2">{entry.message}</p>
+                      ) : null}
+                      {entry.reply ? (
+                        <div className="mt-2 border-t border-line pt-2">
+                          <p className="text-[11px] font-medium tracking-wide text-ink-3">
+                            {entry.to} replied
+                          </p>
+                          <p className="mt-1 whitespace-pre-wrap text-ink">
+                            {entry.reply}
+                          </p>
+                        </div>
+                      ) : null}
                     </div>
                   );
                 }
@@ -1011,9 +1217,30 @@ export function App() {
                 return null;
               })}
 
-              {busy && toolRows.every((r) => r.status !== "started") && (
-                <p className="text-[13px] text-ink-3">
-                  {active?.name ?? "Teammate"} is working…
+              {pending.map((req) => (
+                <ApprovalCard
+                  key={req.requestId}
+                  request={req}
+                  onRespond={(decision, options) =>
+                    respondPermission(req.requestId, decision, options)
+                  }
+                />
+              ))}
+
+              {busy && (
+                <p className="flex items-center gap-2 text-[13px] text-ink-2">
+                  <span
+                    className="size-3 shrink-0 rounded-full border-[1.5px] border-line-strong border-t-ink-2"
+                    style={{ animation: "spin 700ms linear infinite" }}
+                    aria-hidden
+                  />
+                  <span>
+                    {toolRows.find((r) => r.status === "started")
+                      ? `${friendlyToolLabel(
+                          toolRows.find((r) => r.status === "started")!.label,
+                        )}…`
+                      : `${active?.name ?? "Teammate"} is thinking…`}
+                  </span>
                 </p>
               )}
 
@@ -1029,7 +1256,7 @@ export function App() {
         </div>
 
         {showChatChrome && (
-          <div className="shrink-0 border-t border-line bg-panel/80 px-5 py-3 backdrop-blur">
+          <div className="shrink-0 border-t border-line bg-panel/80 px-5 py-3">
             <PromptBar
               disabled={!active}
               sending={busy}
@@ -1057,6 +1284,8 @@ export function App() {
                     if (result.redirectUrl) {
                       const { openExternalUrl } = await import("./openExternal");
                       await openExternalUrl(result.redirectUrl);
+                      // Re-check status after the browser login window.
+                      window.setTimeout(() => void refresh(), 2500);
                     } else if (!result.ok) {
                       setError(
                         result.message ||
@@ -1065,6 +1294,7 @@ export function App() {
                       setNav("plugins");
                     } else {
                       setError(null);
+                      await refresh();
                     }
                   } catch (err) {
                     setError(
@@ -1080,13 +1310,20 @@ export function App() {
       </main>
 
       {computerOpen && showChatChrome && (
-        <aside
-          className={`flex shrink-0 flex-col border-l border-line bg-panel/90 backdrop-blur-md ${
-            vmControlUrl
-              ? "min-w-0 flex-1 border-l-0"
-              : "w-[300px]"
-          }`}
-        >
+        <>
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize computer panel"
+            onPointerDown={(e) => startResize("right", e)}
+            className="w-1 shrink-0 cursor-col-resize bg-transparent"
+          />
+          <aside
+            className={`flex shrink-0 flex-col border-l border-line bg-panel/80 ${
+              vmControlUrl ? "min-w-0 flex-1 border-l-0" : ""
+            }`}
+            style={vmControlUrl ? undefined : { width: rightWidth }}
+          >
           <div
             className={`flex min-h-0 flex-1 flex-col ${
               vmControlUrl ? "gap-0 p-3" : "gap-5 p-4"
@@ -1103,19 +1340,43 @@ export function App() {
               />
             </div>
             {!vmControlUrl && (
-              <div className="min-h-0 flex-1 border-t border-line pt-4">
-                <ChatRoutines
-                  workflows={workflows}
-                  agentSlug={selected}
-                  onAdd={() => setNav("routines")}
-                  onOpenAll={() => setNav("routines")}
-                />
-              </div>
+              <>
+                <div className="shrink-0 border-t border-line pt-4">
+                  <CapabilitiesPanel
+                    agentSlug={selected}
+                    agentName={active?.name}
+                  />
+                </div>
+                <div className="min-h-0 flex-1 border-t border-line pt-4">
+                  <ChatRoutines
+                    workflows={workflows}
+                    agentSlug={selected}
+                    onAdd={() => setNav("routines")}
+                    onOpenAll={() => setNav("routines")}
+                  />
+                </div>
+              </>
             )}
           </div>
-        </aside>
+          </aside>
+        </>
       )}
       </div>
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        title="Delete teammate?"
+        message={
+          active
+            ? `Delete "${active.name}"? Their chat history stays on this PC, but the teammate will be removed. This cannot be undone.`
+            : "Delete this teammate? This cannot be undone."
+        }
+        confirmLabel="Delete"
+        busy={deleteBusy}
+        onCancel={() => {
+          if (!deleteBusy) setDeleteConfirmOpen(false);
+        }}
+        onConfirm={() => void confirmDeleteActiveTeammate()}
+      />
     </div>
   );
 }

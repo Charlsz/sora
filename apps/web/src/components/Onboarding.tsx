@@ -237,7 +237,7 @@ export default function Onboarding({
                       className={`rounded-control px-2.5 py-1.5 text-[12.5px] font-medium ${
                         providerId === opt.id
                           ? "bg-ink text-surface"
-                          : "bg-field text-ink-2 hover:bg-hover"
+                          : "bg-field text-ink-2"
                       }`}
                     >
                       {opt.label}
@@ -264,7 +264,7 @@ export default function Onboarding({
                   href={selected.keyUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-[12px] text-ink-3 underline hover:text-ink-2"
+                  className="text-[12px] text-ink-3 underline"
                 >
                   Get a key from {selected.label}
                 </a>
@@ -287,7 +287,7 @@ export default function Onboarding({
                   href="https://e2b.dev/docs/api-key"
                   target="_blank"
                   rel="noreferrer"
-                  className="text-[12px] text-ink-3 underline hover:text-ink-2"
+                  className="text-[12px] text-ink-3 underline"
                 >
                   Get a free key from E2B
                 </a>

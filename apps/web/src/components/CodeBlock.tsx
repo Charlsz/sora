@@ -32,7 +32,7 @@ export default function CodeBlock({
           type="button"
           aria-label="Copy code"
           onClick={copy}
-          className={`flex h-6 items-center gap-1 rounded-[6px] px-1.5 text-[11.5px] font-medium transition-colors duration-100 hover:bg-hover ${copied ? "text-green" : "text-ink-3 hover:text-ink"}`}
+          className={`flex h-6 items-center gap-1 rounded-[6px] px-1.5 text-[11.5px] font-medium transition-colors duration-100 ${copied ? "text-green" : "text-ink-3"}`}
         >
           {copied ? "Copied" : "Copy"}
         </button>

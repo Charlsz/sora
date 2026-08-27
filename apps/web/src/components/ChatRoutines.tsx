@@ -54,7 +54,7 @@ export default function ChatRoutines({
         <button
           type="button"
           onClick={onOpenAll}
-          className="text-[13px] font-medium text-ink hover:text-ink-2"
+          className="text-[13px] font-medium text-ink"
         >
           Routines
         </button>
@@ -62,7 +62,7 @@ export default function ChatRoutines({
           type="button"
           aria-label="Add routine"
           onClick={onAdd}
-          className="flex size-7 items-center justify-center rounded-[8px] text-ink-3 hover:bg-hover hover:text-ink"
+          className="flex size-7 items-center justify-center rounded-[8px] text-ink-3"
         >
           <svg
             width="16"
@@ -99,7 +99,7 @@ export default function ChatRoutines({
                 key={w.slug}
                 type="button"
                 onClick={onOpenAll}
-                className="flex w-full flex-col gap-1 rounded-[10px] px-2.5 py-2 text-left hover:bg-hover"
+                className="flex w-full flex-col gap-1 rounded-[10px] px-2.5 py-2 text-left"
               >
                 <span className="truncate text-[13px] font-medium text-ink">
                   {w.name}

@@ -183,7 +183,7 @@ export default function TaskRows({
                       onRun(row.key);
                     }
                   }}
-                  className="rounded-full bg-field px-2 py-0.5 text-[11.5px] font-medium text-ink-2 hover:bg-hover"
+                  className="rounded-full bg-field px-2 py-0.5 text-[11.5px] font-medium text-ink-2"
                 >
                   Run
                 </span>
@@ -202,7 +202,7 @@ export default function TaskRows({
                       onToggle(row.key, !(row.enabled ?? true));
                     }
                   }}
-                  className="rounded-full bg-field px-2 py-0.5 text-[11.5px] font-medium text-ink-2 hover:bg-hover"
+                  className="rounded-full bg-field px-2 py-0.5 text-[11.5px] font-medium text-ink-2"
                 >
                   {row.enabled === false ? "Resume" : "Pause"}
                 </span>
@@ -221,7 +221,7 @@ export default function TaskRows({
                       onDelete(row.key);
                     }
                   }}
-                  className="rounded-full px-2 py-0.5 text-[11.5px] font-medium text-ink-3 hover:bg-hover hover:text-red"
+                  className="rounded-full px-2 py-0.5 text-[11.5px] font-medium text-ink-3"
                 >
                   Delete
                 </span>
@@ -287,7 +287,7 @@ export default function TaskRows({
                                   e.stopPropagation();
                                   onCopy(`${row.key}-webhook`, d.meta);
                                 }}
-                                className="shrink-0 rounded-full bg-field px-2 py-0.5 text-[10.5px] text-ink-2 hover:bg-hover"
+                                className="shrink-0 rounded-full bg-field px-2 py-0.5 text-[10.5px] text-ink-2"
                               >
                                 {copiedKey === `${row.key}-webhook`
                                   ? "Copied"

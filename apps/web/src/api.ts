@@ -9,6 +9,23 @@ export type Agent = {
   tools: Array<{ name: string }>;
   skills: Array<{ name: string }>;
   capabilities: string[];
+  policy?: {
+    default: "allow" | "ask" | "deny";
+    actions: Partial<Record<string, "allow" | "ask" | "deny">>;
+    localComputer?: "allow" | "ask" | "deny";
+    capabilities?: Partial<
+      Record<
+        | "localComputer"
+        | "files"
+        | "terminal"
+        | "browser"
+        | "apps"
+        | "external"
+        | "automation",
+        "allow" | "ask" | "deny"
+      >
+    >;
+  };
   status: string;
   workspace?: string;
 };
@@ -143,6 +160,8 @@ export type LiveEntry =
       content: string;
       streamId?: string;
       streaming?: boolean;
+      /** When this bubble is from another teammate (handoff). */
+      fromAgent?: string;
     }
   | {
       kind: "tool";
@@ -150,6 +169,15 @@ export type LiveEntry =
       name: string;
       status: "started" | "completed" | "failed";
       detail?: string;
+    }
+  | {
+      kind: "handoff";
+      id: string;
+      from: string;
+      to: string;
+      message: string;
+      reply?: string;
+      status: "started" | "completed" | "queued";
     }
   | { kind: "event"; id: string; type: string; detail?: string };
 
@@ -290,6 +318,7 @@ export const soraApi = {
       instructions?: string;
       model?: string;
       accentColor?: string | null;
+      policy?: Agent["policy"];
     },
   ) =>
     api<Agent>(`/api/agents/${encodeURIComponent(slug)}`, {
@@ -386,6 +415,15 @@ export const soraApi = {
   tools: () =>
     api<Array<{ name: string; description: string }>>("/api/tools"),
   plugins: () => api<{ plugins: PluginStatus[] }>("/api/plugins"),
+  composioConnections: () =>
+    api<{
+      connections: Array<{
+        slug: string;
+        status: "ACTIVE" | "inactive";
+        id?: string;
+      }>;
+      userId: string;
+    }>("/api/plugins/composio/connections"),
   connectPlugin: (id: string, app?: string) =>
     api<{
       ok: boolean;
@@ -680,6 +718,9 @@ export function connectEvents(
     "agent.started",
     "agent.completed",
     "agent.failed",
+    "agent.created",
+    "agent.updated",
+    "agent.deleted",
     "agent.text.started",
     "agent.text.delta",
     "agent.text.done",
@@ -687,6 +728,7 @@ export function connectEvents(
     "agent.tool.completed",
     "agent.tool.failed",
     "agent.delegated",
+    "agent.messaged",
     "permission.requested",
     "permission.pending",
     "workflow.started",

@@ -248,7 +248,7 @@ export default function RoutinesPanel({
                     onClick={() =>
                       void handleCopy("draft", webhookUrl(webhook.trim()))
                     }
-                    className="shrink-0 rounded-control bg-field px-2.5 py-1.5 text-[12px] text-ink-2 hover:bg-hover"
+                    className="shrink-0 rounded-control bg-field px-2.5 py-1.5 text-[12px] text-ink-2"
                   >
                     {copied === "draft" ? "Copied" : "Copy URL"}
                   </button>

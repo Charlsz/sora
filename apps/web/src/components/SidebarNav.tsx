@@ -1,52 +1,27 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-  type ReactNode,
-} from "react";
-import { createPortal } from "react-dom";
+import { type CSSProperties, type ReactNode } from "react";
 import BotMark from "./BotMark";
-import GlideMenu from "./GlideMenu";
 
 export type SidebarRecent = {
   id: string;
-  /** Teammate display name */
   label: string;
-  /** Short role (e.g. Inbox, Research), shown with name if set */
   role?: string;
-  /** What they’re doing right now */
   activity?: string;
-  /** Accent for the bot mark */
   color?: string;
 };
 
 type SidebarNavProps = {
-  brand?: string;
-  monogram?: string;
   displayName?: string | null;
   activeId?: string | null;
   className?: string;
   fill?: boolean;
+  width?: number;
   onNewTeammate?: () => void;
   onPick?: (id: string, label: string) => void;
   activeNav?: string;
   onNavigate?: (key: string) => void;
-  footerLabel?: string;
-  onFooterClick?: () => void;
+  onPlugins?: () => void;
+  onSettings?: () => void;
   teammates?: SidebarRecent[];
-  moreItems?: Array<{ key: string; label: string }>;
-  online?: boolean | null;
-  /** When false, the aside is not rendered (parent shows a reopen control). */
-  open?: boolean;
-  onOpenChange?: (open: boolean) => void;
-};
-
-const SIDEBAR_MOTION = {
-  expandedWidth: 260,
-  collapsedWidth: 56,
-  duration: 280,
-  easing: "cubic-bezier(0.16, 1, 0.3, 1)",
 };
 
 const CIRCLE_COLORS = [
@@ -90,72 +65,26 @@ function Icon({
   );
 }
 
-function PanelToggleIcon({ collapsed }: { collapsed: boolean }) {
-  return (
-    <Icon size={16}>
-      <rect x="3" y="4" width="18" height="16" rx="2" />
-      <path d="M9 4v16" />
-      {collapsed ? (
-        <path d="M13 9l3 3-3 3" />
-      ) : (
-        <path d="M15 9l-3 3 3 3" />
-      )}
-    </Icon>
-  );
-}
+const btnPress =
+  "cursor-pointer transition-transform duration-100 active:scale-[0.96]";
 
 export default function SidebarNav({
   displayName,
   activeId,
   className = "",
   fill = false,
+  width = 260,
   onNewTeammate,
   onPick,
   activeNav,
   onNavigate,
-  footerLabel = "Settings",
-  onFooterClick,
+  onPlugins,
+  onSettings,
   teammates = [],
-  moreItems = [],
-  open = true,
-  onOpenChange,
 }: SidebarNavProps) {
-  const [collapsed, setCollapsed] = useState(false);
-  const [internalNav, setInternalNav] = useState("chats");
-  const currentNav = activeNav ?? internalNav;
   const selectNav = (key: string) => {
-    setInternalNav(key);
     onNavigate?.(key);
   };
-  const [moreOpen, setMoreOpen] = useState(false);
-  const [morePos, setMorePos] = useState({ top: 0, left: 0 });
-  const moreBtnRef = useRef<HTMLButtonElement>(null);
-  const [query, setQuery] = useState("");
-
-  const visible = teammates.filter((t) => {
-    const q = query.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      t.label.toLowerCase().includes(q) ||
-      (t.role?.toLowerCase().includes(q) ?? false) ||
-      (t.activity?.toLowerCase().includes(q) ?? false)
-    );
-  });
-
-  useEffect(() => {
-    if (!moreOpen) return;
-    const close = (event: PointerEvent) => {
-      const target = event.target as Element;
-      if (
-        !target.closest("[data-more-trigger]") &&
-        !target.closest("[data-more-menu]")
-      ) {
-        setMoreOpen(false);
-      }
-    };
-    document.addEventListener("pointerdown", close);
-    return () => document.removeEventListener("pointerdown", close);
-  }, [moreOpen]);
 
   const initials = (displayName || "You")
     .split(/\s+/)
@@ -164,57 +93,28 @@ export default function SidebarNav({
     .slice(0, 2)
     .toUpperCase();
 
-  if (!open) return null;
-
   return (
     <aside
-      data-sidebar-collapsed={collapsed}
       aria-label="Teammates"
-      className={`relative flex shrink-0 flex-col overflow-hidden border-r border-line bg-panel/90 backdrop-blur-md transition-[width] ${fill ? "h-full" : "h-[600px]"} ${className}`}
-      style={
-        {
-          width: collapsed
-            ? SIDEBAR_MOTION.collapsedWidth
-            : SIDEBAR_MOTION.expandedWidth,
-          transitionDuration: `${SIDEBAR_MOTION.duration}ms`,
-          transitionTimingFunction: SIDEBAR_MOTION.easing,
-        } as CSSProperties
-      }
+      className={`relative flex shrink-0 flex-col overflow-hidden border-r border-line bg-panel/80 ${fill ? "h-full" : "h-[600px]"} ${className}`}
+      style={{ width } as CSSProperties}
     >
-      {collapsed ? (
-        <div className="flex h-full w-[56px] flex-col items-center gap-1 py-2">
-          <button
-            type="button"
-            aria-label="Show teammates panel"
-            title="Show panel"
-            onClick={() => setCollapsed(false)}
-            className="flex size-9 items-center justify-center rounded-[10px] bg-field text-ink-2 hover:bg-hover hover:text-ink"
-          >
-            <PanelToggleIcon collapsed />
-          </button>
-          <button
-            type="button"
-            aria-label="Hide teammates panel"
-            title="Hide panel"
-            onClick={() => onOpenChange?.(false)}
-            className="flex size-9 items-center justify-center rounded-[10px] text-ink-3 hover:bg-hover hover:text-ink"
-          >
-            <Icon size={15}>
-              <path d="M18 6L6 18M6 6l12 12" />
-            </Icon>
-          </button>
+      <div className="flex min-h-0 w-full flex-1 flex-col py-2">
+        <div className="mx-2 mb-2 flex items-center justify-end">
           <button
             type="button"
             aria-label="New teammate"
             onClick={() => onNewTeammate?.()}
-            className="flex size-9 items-center justify-center rounded-[10px] text-ink-2 hover:bg-hover hover:text-ink"
+            className={`flex size-8 shrink-0 items-center justify-center rounded-[10px] bg-field text-ink-2 ${btnPress}`}
           >
             <Icon size={16}>
               <path d="M12 5v14M5 12h14" />
             </Icon>
           </button>
-          <div className="my-1 h-px w-7 bg-line" />
-          <div className="flex min-h-0 flex-1 flex-col items-center gap-1.5 overflow-y-auto py-1">
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-1.5">
+          <div className="flex flex-col gap-0.5">
             {teammates.map((t) => {
               const active = activeId === t.id;
               const color = t.color ?? teammateColor(t.id);
@@ -222,227 +122,88 @@ export default function SidebarNav({
                 <button
                   key={t.id}
                   type="button"
-                  title={t.label}
-                  aria-label={t.label}
                   onClick={() => {
                     selectNav("chats");
                     onPick?.(t.id, t.label);
                   }}
-                  className={`flex size-9 items-center justify-center rounded-[10px] ${
-                    active
-                      ? "ring-2 ring-ink ring-offset-1 ring-offset-panel"
-                      : ""
+                  className={`flex w-full items-start gap-2.5 rounded-[12px] px-2.5 py-2.5 text-left ${btnPress} ${
+                    active ? "bg-field" : ""
                   }`}
                 >
-                  <BotMark color={color} size={26} />
+                  <BotMark color={color} size={30} className="mt-0.5" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13.5px] font-semibold text-ink">
+                      {t.label}
+                      {t.role ? (
+                        <span className="ml-1.5 font-normal text-ink-3">
+                          {t.role}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="mt-0.5 block truncate text-[12px] text-ink-3">
+                      {t.activity || "Idle"}
+                    </span>
+                  </span>
                 </button>
               );
             })}
+            {teammates.length === 0 && (
+              <p className="px-3 py-3 text-[12.5px] text-ink-3">
+                No teammates yet. Tap + to create one
+              </p>
+            )}
           </div>
+        </div>
+
+        <div className="mx-2 mt-2 flex flex-col gap-0.5 border-t border-line pt-2">
           <button
             type="button"
-            aria-label={footerLabel}
-            title={displayName?.trim() || "You"}
-            onClick={onFooterClick}
-            className="mb-1 flex size-9 items-center justify-center rounded-full bg-field text-[11px] font-semibold text-ink-2 hover:bg-hover"
+            onClick={() => {
+              onPlugins?.();
+              onNavigate?.("plugins");
+            }}
+            className={`flex h-11 w-full items-center gap-2.5 rounded-[10px] px-2 text-left ${btnPress} ${
+              activeNav === "plugins" ? "bg-field" : ""
+            }`}
           >
-            {initials}
+            <span className="flex size-8 shrink-0 items-center justify-center text-ink-2">
+              <Icon size={18}>
+                <path d="M12 22v-5" />
+                <path d="M9 8V2" />
+                <path d="M15 8V2" />
+                <path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z" />
+              </Icon>
+            </span>
+            <span className="text-[13px] font-medium text-ink">Plugin</span>
           </button>
-        </div>
-      ) : (
-        <div className="flex min-h-0 w-full flex-1 flex-col py-2">
-          <div className="mx-2 mb-2 flex items-center gap-1">
-            <div className="flex min-w-0 flex-1 items-center rounded-[10px] bg-field px-2.5">
-              <Icon size={14}>
-                <circle cx="11" cy="11" r="7" />
-                <path d="M20 20l-3-3" />
+          <button
+            type="button"
+            onClick={() => {
+              onSettings?.();
+              onNavigate?.("settings");
+            }}
+            className={`flex h-11 w-full items-center gap-2.5 rounded-[10px] px-2 text-left ${btnPress} ${
+              activeNav === "settings" ? "bg-field" : ""
+            }`}
+          >
+            <span className="flex size-8 shrink-0 items-center justify-center text-ink-2">
+              <Icon size={18}>
+                <circle cx="12" cy="12" r="3" />
+                <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
               </Icon>
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search"
-                className="h-8 min-w-0 flex-1 bg-transparent px-2 text-[13px] text-ink outline-none placeholder:text-ink-3"
-              />
-            </div>
-            <button
-              type="button"
-              aria-label="New teammate"
-              onClick={() => onNewTeammate?.()}
-              className="flex size-8 shrink-0 items-center justify-center rounded-[10px] bg-field text-ink-2 hover:bg-hover hover:text-ink"
-            >
-              <Icon size={16}>
-                <path d="M12 5v14M5 12h14" />
-              </Icon>
-            </button>
-            {moreItems.length > 0 && (
-              <button
-                ref={moreBtnRef}
-                data-more-trigger
-                type="button"
-                aria-label="More"
-                onClick={() => {
-                  if (moreBtnRef.current) {
-                    const rect = moreBtnRef.current.getBoundingClientRect();
-                    setMorePos({ top: rect.bottom + 4, left: rect.left });
-                  }
-                  setMoreOpen((o) => !o);
-                }}
-                className="flex size-8 shrink-0 items-center justify-center rounded-[10px] bg-field text-ink-2 hover:bg-hover hover:text-ink"
-              >
-                <Icon size={16}>
-                  <circle
-                    cx="5"
-                    cy="12"
-                    r="1.5"
-                    fill="currentColor"
-                    stroke="none"
-                  />
-                  <circle
-                    cx="12"
-                    cy="12"
-                    r="1.5"
-                    fill="currentColor"
-                    stroke="none"
-                  />
-                  <circle
-                    cx="19"
-                    cy="12"
-                    r="1.5"
-                    fill="currentColor"
-                    stroke="none"
-                  />
-                </Icon>
-              </button>
-            )}
-            <button
-              type="button"
-              aria-label="Collapse teammates panel"
-              title="Collapse panel"
-              onClick={() => setCollapsed(true)}
-              className="flex size-8 shrink-0 items-center justify-center rounded-[10px] bg-field text-ink-2 hover:bg-hover hover:text-ink"
-            >
-              <PanelToggleIcon collapsed={false} />
-            </button>
-            <button
-              type="button"
-              aria-label="Hide teammates panel"
-              title="Hide panel"
-              onClick={() => onOpenChange?.(false)}
-              className="flex size-8 shrink-0 items-center justify-center rounded-[10px] bg-field text-ink-2 hover:bg-hover hover:text-ink"
-            >
-              <Icon size={14}>
-                <path d="M18 6L6 18M6 6l12 12" />
-              </Icon>
-            </button>
-          </div>
-
-          {moreOpen &&
-            createPortal(
-              <div
-                data-more-menu
-                className="fixed z-50 w-48 rounded-[12px] bg-surface p-1 shadow-overlay"
-                style={{
-                  top: morePos.top,
-                  left: morePos.left,
-                  animation: "pop-in 160ms cubic-bezier(0.23,1,0.32,1) both",
-                }}
-              >
-                {moreItems.map((item) => (
-                  <button
-                    key={item.key}
-                    type="button"
-                    onClick={() => {
-                      setMoreOpen(false);
-                      selectNav(item.key);
-                    }}
-                    className={`flex h-9 w-full items-center rounded-[8px] px-2.5 text-left text-[13.5px] font-medium ${
-                      currentNav === item.key
-                        ? "bg-hover-2 text-ink"
-                        : "text-ink-2 hover:bg-hover"
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>,
-              document.body,
-            )}
-
-          <div className="min-h-0 flex-1 overflow-y-auto px-1.5">
-            <GlideMenu
-              rowSelector="[data-row]"
-              highlightClassName="sidebar-glide-highlight rounded-[12px] bg-hover-2"
-              className="group/glide flex flex-col gap-0.5"
-            >
-              {visible.map((t) => {
-                const active = activeId === t.id;
-                const color = t.color ?? teammateColor(t.id);
-                return (
-                  <button
-                    key={t.id}
-                    data-row
-                    type="button"
-                    onClick={() => {
-                      selectNav("chats");
-                      onPick?.(t.id, t.label);
-                    }}
-                    className={`sidebar-row relative z-10 flex w-full items-start gap-2.5 rounded-[12px] px-2.5 py-2.5 text-left transition-[background-color,transform] duration-150 active:scale-[0.99] ${
-                      active
-                        ? "bg-hover-2 group-hover/glide:bg-transparent"
-                        : "hover:bg-hover/60"
-                    }`}
-                  >
-                    <BotMark color={color} size={30} className="mt-0.5" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13.5px] font-semibold text-ink">
-                        {t.label}
-                        {t.role ? (
-                          <span className="ml-1.5 font-normal text-ink-3">
-                            {t.role}
-                          </span>
-                        ) : null}
-                      </span>
-                      <span className="mt-0.5 block truncate text-[12px] text-ink-3">
-                        {t.activity || "Idle"}
-                      </span>
-                    </span>
-                  </button>
-                );
-              })}
-              {query && visible.length === 0 && (
-                <p className="px-3 py-3 text-[12.5px] text-ink-3">
-                  No teammates match
-                </p>
-              )}
-              {!query && teammates.length === 0 && (
-                <p className="px-3 py-3 text-[12.5px] text-ink-3">
-                  No teammates yet. Tap + to create one
-                </p>
-              )}
-            </GlideMenu>
-          </div>
-
-          <div className="mx-2 mt-2 border-t border-line pt-2">
-            <button
-              type="button"
-              onClick={onFooterClick}
-              className="flex h-11 w-full items-center gap-2.5 rounded-[12px] px-2 text-left hover:bg-hover-2"
-            >
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-field text-[11px] font-semibold text-ink-2">
-                {initials}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13px] font-medium text-ink">
-                  {displayName?.trim() || "You"}
-                </span>
-                <span className="block truncate text-[11px] text-ink-3">
-                  {footerLabel}
-                </span>
-              </span>
-            </button>
+            </span>
+            <span className="text-[13px] font-medium text-ink">Settings</span>
+          </button>
+          <div className="flex h-11 items-center gap-2.5 px-2">
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-field text-[11px] font-semibold text-ink-2">
+              {initials}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink">
+              {displayName?.trim() || "You"}
+            </span>
           </div>
         </div>
-      )}
+      </div>
     </aside>
   );
 }

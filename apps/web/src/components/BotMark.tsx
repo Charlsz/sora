@@ -13,6 +13,7 @@ export default function BotMark({
   className?: string;
   title?: string;
 }) {
+  const hex = color.trim() || "#5358AF";
   const mask = (url: string) =>
     ({
       WebkitMaskImage: `url(${url})`,
@@ -23,10 +24,13 @@ export default function BotMark({
       maskRepeat: "no-repeat",
       WebkitMaskPosition: "center",
       maskPosition: "center",
+      WebkitMaskMode: "alpha",
+      maskMode: "alpha",
     }) as const;
 
   return (
     <span
+      key={hex}
       className={`relative inline-flex shrink-0 items-center justify-center ${className}`}
       style={{ width: size, height: size }}
       title={title}
@@ -36,7 +40,7 @@ export default function BotMark({
     >
       <span
         className="absolute inset-0"
-        style={{ backgroundColor: color, ...mask(bodyMaskUrl) }}
+        style={{ backgroundColor: hex, ...mask(bodyMaskUrl) }}
       />
       <span
         className="absolute inset-0"

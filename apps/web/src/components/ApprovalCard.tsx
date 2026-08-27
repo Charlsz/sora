@@ -127,7 +127,7 @@ export default function ApprovalCard({ request, onRespond }: ApprovalCardProps) 
             type="button"
             disabled={busy}
             onClick={() => void respond("deny")}
-            className="rounded-control px-3 py-1.5 text-[12.5px] font-medium text-ink-2 transition-colors duration-100 hover:bg-hover disabled:opacity-50"
+            className="rounded-control px-3 py-1.5 text-[12.5px] font-medium text-ink-2 transition-colors duration-100 disabled:opacity-50"
           >
             Deny
           </button>
@@ -135,7 +135,7 @@ export default function ApprovalCard({ request, onRespond }: ApprovalCardProps) 
             type="button"
             disabled={busy}
             onClick={() => void respond("allow")}
-            className="rounded-control bg-field px-3 py-1.5 text-[12.5px] font-medium text-ink-2 hover:bg-hover disabled:opacity-50"
+            className="rounded-control bg-field px-3 py-1.5 text-[12.5px] font-medium text-ink-2 disabled:opacity-50"
           >
             Allow once
           </button>

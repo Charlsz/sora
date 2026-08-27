@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { soraApi, type Agent } from "../api";
 import CreateTeammateForm from "./CreateTeammateForm";
+import ConfirmDialog from "./ConfirmDialog";
 import { isReservedTeammateName } from "../teammateNames";
 import BotMark, {
   BOT_ACCENT_PRESETS,
@@ -33,7 +34,8 @@ export default function AgentsPanel({
   const [editDescription, setEditDescription] = useState("");
   const [editInstructions, setEditInstructions] = useState("");
   const [editModel, setEditModel] = useState("");
-  const [editAccent, setEditAccent] = useState(BOT_ACCENT_PRESETS[0]!);
+  const [editAccent, setEditAccent] = useState<string>(BOT_ACCENT_PRESETS[0]!);
+  const [pendingDelete, setPendingDelete] = useState<Agent | null>(null);
 
   function startEdit(agent: Agent) {
     setEditing(agent.slug);
@@ -69,14 +71,14 @@ export default function AgentsPanel({
     }
   }
 
-  async function remove(slug: string) {
-    if (!window.confirm(`Delete teammate "${slug}"? This cannot be undone.`)) {
-      return;
-    }
+  async function confirmRemove() {
+    if (!pendingDelete || busy) return;
+    const slug = pendingDelete.slug;
     setBusy(true);
     try {
       await soraApi.deleteAgent(slug);
       if (editing === slug) setEditing(null);
+      setPendingDelete(null);
       onChanged();
     } catch (err) {
       onError(err instanceof Error ? err.message : String(err));
@@ -203,15 +205,15 @@ export default function AgentsPanel({
                     <button
                       type="button"
                       onClick={() => startEdit(agent)}
-                      className="rounded-control bg-field px-2 py-1 text-[11px] font-medium text-ink-2 hover:bg-hover"
+                      className="rounded-control bg-field px-2 py-1 text-[11px] font-medium text-ink-2"
                     >
                       Edit
                     </button>
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => void remove(agent.slug)}
-                      className="rounded-control bg-field px-2 py-1 text-[11px] font-medium text-red hover:bg-hover disabled:opacity-50"
+                      onClick={() => setPendingDelete(agent)}
+                      className="rounded-control bg-field px-2 py-1 text-[11px] font-medium text-red disabled:opacity-50"
                     >
                       Delete
                     </button>
@@ -222,6 +224,22 @@ export default function AgentsPanel({
           );
         })}
       </ul>
+
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        title="Delete teammate?"
+        message={
+          pendingDelete
+            ? `Delete "${pendingDelete.name}"? Their chat history stays on this PC, but the teammate will be removed. This cannot be undone.`
+            : "Delete this teammate? This cannot be undone."
+        }
+        confirmLabel="Delete"
+        busy={busy && Boolean(pendingDelete)}
+        onCancel={() => {
+          if (!busy) setPendingDelete(null);
+        }}
+        onConfirm={() => void confirmRemove()}
+      />
     </div>
   );
 }
