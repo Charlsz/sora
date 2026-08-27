@@ -21,6 +21,8 @@ export type Agent = {
   description: string;
   instructions: string;
   model: string;
+  /** Hex accent for the tintable bot mark, e.g. #8B6BC9 */
+  accentColor: string | null;
   tools: ToolReference[];
   skills: SkillReference[];
   capabilities: string[];
@@ -36,6 +38,7 @@ export type CreateAgentInput = {
   description?: string;
   instructions?: string;
   model?: string;
+  accentColor?: string | null;
   tools?: string[];
   skills?: string[];
   capabilities?: string[];

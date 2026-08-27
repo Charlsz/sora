@@ -95,6 +95,7 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
             description?: string;
             model?: string;
             instructions?: string;
+            accentColor?: string | null;
           };
           try {
             const agent = services.agents.create(
@@ -103,6 +104,7 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
                 description: body.description,
                 model: body.model,
                 instructions: body.instructions,
+                accentColor: body.accentColor,
               },
               services.runtime.config.defaultModel,
             );
@@ -144,6 +146,7 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
             description?: string;
             instructions?: string;
             model?: string;
+            accentColor?: string | null;
           };
           if (body.model?.trim()) {
             try {
@@ -165,6 +168,7 @@ export function startApiServer(options: ApiServerOptions): StartedApiServer {
               description: body.description,
               instructions: body.instructions,
               model: body.model?.trim(),
+              accentColor: body.accentColor,
             });
             return json(agent, cors);
           } catch (err) {

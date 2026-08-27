@@ -8,8 +8,20 @@ import {
   type Skill,
   type Workflow,
 } from "./api";
+import {
+  applyDocumentTheme,
+  loadAppearance,
+  measureImageLuminance,
+  saveLeftPanelOpen,
+  saveRightPanelOpen,
+  saveTheme,
+  saveWallpaper,
+  type ThemeMode,
+} from "./appearance";
 import ApprovalCard from "./components/ApprovalCard";
 import AgentsPanel from "./components/AgentsPanel";
+import AppearanceSettings from "./components/AppearanceSettings";
+import BotMark from "./components/BotMark";
 import ComputerPanel from "./components/ComputerPanel";
 import ChatRoutines from "./components/ChatRoutines";
 import Onboarding from "./components/Onboarding";
@@ -78,7 +90,22 @@ export function App() {
   const [computerReady, setComputerReady] = useState(false);
   const [onboardingDone, setOnboardingDone] = useState(false);
   const [saveRoutineBusy, setSaveRoutineBusy] = useState(false);
-  const [computerOpen, setComputerOpen] = useState(true);
+  const initialAppearance = useMemo(() => loadAppearance(), []);
+  const [computerOpen, setComputerOpen] = useState(
+    initialAppearance.rightPanelOpen,
+  );
+  const [leftPanelOpen, setLeftPanelOpen] = useState(
+    initialAppearance.leftPanelOpen,
+  );
+  const [wallpaper, setWallpaper] = useState<string | null>(
+    initialAppearance.wallpaper,
+  );
+  const [themeMode, setThemeMode] = useState<ThemeMode>(
+    initialAppearance.theme,
+  );
+  const [wallpaperLuminance, setWallpaperLuminance] = useState<number | null>(
+    null,
+  );
   const [vmControlUrl, setVmControlUrl] = useState<string | null>(null);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [connectApps, setConnectApps] = useState<
@@ -267,6 +294,36 @@ export function App() {
     return () => document.removeEventListener("pointerdown", close);
   }, [headerMenuOpen]);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!wallpaper) {
+      setWallpaperLuminance(null);
+      return;
+    }
+    void measureImageLuminance(wallpaper)
+      .then((lum) => {
+        if (!cancelled) setWallpaperLuminance(lum);
+      })
+      .catch(() => {
+        if (!cancelled) setWallpaperLuminance(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [wallpaper]);
+
+  useEffect(() => {
+    applyDocumentTheme(themeMode, wallpaperLuminance);
+  }, [themeMode, wallpaperLuminance]);
+
+  useEffect(() => {
+    saveLeftPanelOpen(leftPanelOpen);
+  }, [leftPanelOpen]);
+
+  useEffect(() => {
+    saveRightPanelOpen(computerOpen);
+  }, [computerOpen]);
+
   async function loadConversation(id: string) {
     setConversationId(id);
     const msgs = await soraApi.messages(id);
@@ -375,6 +432,7 @@ export function App() {
         label: a.name,
         role: a.description?.trim()?.slice(0, 32) || undefined,
         activity,
+        color: a.accentColor?.trim() || teammateColor(a.slug),
       };
     });
   }, [agents, selected, workerStatus, toolRows, latestUserTask]);
@@ -578,7 +636,50 @@ export function App() {
   );
 
   return (
-    <div className="flex h-full min-h-0">
+    <div
+      className="relative flex h-full min-h-0 bg-page"
+      style={
+        wallpaper
+          ? {
+              backgroundImage: `url(${wallpaper})`,
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+            }
+          : undefined
+      }
+    >
+      {wallpaper && (
+        <div
+          className="pointer-events-none absolute inset-0 bg-page/35"
+          aria-hidden
+        />
+      )}
+      <div className="relative z-10 flex h-full min-h-0 w-full">
+      {!leftPanelOpen && (
+        <button
+          type="button"
+          aria-label="Show teammates panel"
+          title="Show teammates"
+          onClick={() => setLeftPanelOpen(true)}
+          className="absolute top-3 left-3 z-30 flex size-9 items-center justify-center rounded-[10px] border border-line bg-panel/90 text-ink-2 shadow-raised backdrop-blur-md hover:bg-hover hover:text-ink"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <rect x="3" y="4" width="18" height="16" rx="2" />
+            <path d="M9 4v16" />
+            <path d="M13 9l3 3-3 3" />
+          </svg>
+        </button>
+      )}
       <SidebarNav
         fill
         brand={undefined}
@@ -588,6 +689,8 @@ export function App() {
         activeNav={nav}
         onNavigate={setNav}
         online={apiOk}
+        open={leftPanelOpen}
+        onOpenChange={setLeftPanelOpen}
         teammates={sidebarTeammates}
         moreItems={[
           { key: "routines", label: "Schedules" },
@@ -610,7 +713,7 @@ export function App() {
       />
 
       <main
-        className={`flex min-h-0 flex-col ${
+        className={`flex min-h-0 flex-col bg-panel/85 backdrop-blur-md ${
           vmControlUrl && showChatChrome
             ? "w-[380px] shrink-0 border-r border-line"
             : "min-w-0 flex-1"
@@ -619,13 +722,12 @@ export function App() {
         <header className="flex shrink-0 items-center justify-between gap-3 border-b border-line px-5 py-3">
           <div className="flex min-w-0 items-center gap-2.5">
             {showChatChrome && active && (
-              <span
-                className="flex size-7 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold text-surface"
-                style={{ background: teammateColor(active.slug) }}
-                aria-hidden
-              >
-                {active.name.slice(0, 1).toUpperCase()}
-              </span>
+              <BotMark
+                color={
+                  active.accentColor?.trim() || teammateColor(active.slug)
+                }
+                size={28}
+              />
             )}
             <div className="min-w-0">
               <h1 className="truncate text-[15px] font-semibold text-ink">
@@ -765,7 +867,21 @@ export function App() {
             </p>
           )}
           {nav === "settings" ? (
-            <ProviderSettings onChanged={() => void refresh()} />
+            <div className="flex flex-col gap-4">
+              <AppearanceSettings
+                wallpaper={wallpaper}
+                theme={themeMode}
+                onWallpaper={async (dataUrl) => {
+                  saveWallpaper(dataUrl);
+                  setWallpaper(dataUrl);
+                }}
+                onTheme={(mode) => {
+                  saveTheme(mode);
+                  setThemeMode(mode);
+                }}
+              />
+              <ProviderSettings onChanged={() => void refresh()} />
+            </div>
           ) : nav === "plugins" ? (
             <PluginsPanel
               onChanged={() => void refresh()}
@@ -949,7 +1065,7 @@ export function App() {
 
       {computerOpen && showChatChrome && (
         <aside
-          className={`flex shrink-0 flex-col border-l border-line bg-panel ${
+          className={`flex shrink-0 flex-col border-l border-line bg-panel/90 backdrop-blur-md ${
             vmControlUrl
               ? "min-w-0 flex-1 border-l-0"
               : "w-[300px]"
@@ -983,6 +1099,7 @@ export function App() {
           </div>
         </aside>
       )}
+      </div>
     </div>
   );
 }

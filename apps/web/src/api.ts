@@ -5,6 +5,7 @@ export type Agent = {
   description: string;
   instructions: string;
   model: string;
+  accentColor?: string | null;
   tools: Array<{ name: string }>;
   skills: Array<{ name: string }>;
   capabilities: string[];
@@ -236,6 +237,7 @@ export const soraApi = {
     name?: string;
     description?: string;
     instructions?: string;
+    accentColor?: string | null;
   }) =>
     api<Agent>("/api/agents", {
       method: "POST",
@@ -287,6 +289,7 @@ export const soraApi = {
       description?: string;
       instructions?: string;
       model?: string;
+      accentColor?: string | null;
     },
   ) =>
     api<Agent>(`/api/agents/${encodeURIComponent(slug)}`, {

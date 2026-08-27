@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import BotMark from "./BotMark";
 import GlideMenu from "./GlideMenu";
 
 export type SidebarRecent = {
@@ -16,7 +17,7 @@ export type SidebarRecent = {
   role?: string;
   /** What they’re doing right now */
   activity?: string;
-  /** Stable color for the circle */
+  /** Accent for the bot mark */
   color?: string;
 };
 
@@ -36,6 +37,9 @@ type SidebarNavProps = {
   teammates?: SidebarRecent[];
   moreItems?: Array<{ key: string; label: string }>;
   online?: boolean | null;
+  /** When false, the aside is not rendered (parent shows a reopen control). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 };
 
 const SIDEBAR_MOTION = {
@@ -113,6 +117,8 @@ export default function SidebarNav({
   onFooterClick,
   teammates = [],
   moreItems = [],
+  open = true,
+  onOpenChange,
 }: SidebarNavProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [internalNav, setInternalNav] = useState("chats");
@@ -158,11 +164,13 @@ export default function SidebarNav({
     .slice(0, 2)
     .toUpperCase();
 
+  if (!open) return null;
+
   return (
     <aside
       data-sidebar-collapsed={collapsed}
       aria-label="Teammates"
-      className={`relative flex shrink-0 flex-col overflow-hidden border-r border-line bg-panel transition-[width] ${fill ? "h-full" : "h-[600px]"} ${className}`}
+      className={`relative flex shrink-0 flex-col overflow-hidden border-r border-line bg-panel/90 backdrop-blur-md transition-[width] ${fill ? "h-full" : "h-[600px]"} ${className}`}
       style={
         {
           width: collapsed
@@ -183,6 +191,17 @@ export default function SidebarNav({
             className="flex size-9 items-center justify-center rounded-[10px] bg-field text-ink-2 hover:bg-hover hover:text-ink"
           >
             <PanelToggleIcon collapsed />
+          </button>
+          <button
+            type="button"
+            aria-label="Hide teammates panel"
+            title="Hide panel"
+            onClick={() => onOpenChange?.(false)}
+            className="flex size-9 items-center justify-center rounded-[10px] text-ink-3 hover:bg-hover hover:text-ink"
+          >
+            <Icon size={15}>
+              <path d="M18 6L6 18M6 6l12 12" />
+            </Icon>
           </button>
           <button
             type="button"
@@ -209,14 +228,13 @@ export default function SidebarNav({
                     selectNav("chats");
                     onPick?.(t.id, t.label);
                   }}
-                  className={`flex size-9 items-center justify-center rounded-full ${
-                    active ? "ring-2 ring-ink ring-offset-1 ring-offset-panel" : ""
+                  className={`flex size-9 items-center justify-center rounded-[10px] ${
+                    active
+                      ? "ring-2 ring-ink ring-offset-1 ring-offset-panel"
+                      : ""
                   }`}
                 >
-                  <span
-                    className="size-7 rounded-full"
-                    style={{ backgroundColor: color }}
-                  />
+                  <BotMark color={color} size={26} />
                 </button>
               );
             })}
@@ -298,12 +316,23 @@ export default function SidebarNav({
             )}
             <button
               type="button"
-              aria-label="Hide teammates panel"
-              title="Hide panel"
+              aria-label="Collapse teammates panel"
+              title="Collapse panel"
               onClick={() => setCollapsed(true)}
               className="flex size-8 shrink-0 items-center justify-center rounded-[10px] bg-field text-ink-2 hover:bg-hover hover:text-ink"
             >
               <PanelToggleIcon collapsed={false} />
+            </button>
+            <button
+              type="button"
+              aria-label="Hide teammates panel"
+              title="Hide panel"
+              onClick={() => onOpenChange?.(false)}
+              className="flex size-8 shrink-0 items-center justify-center rounded-[10px] bg-field text-ink-2 hover:bg-hover hover:text-ink"
+            >
+              <Icon size={14}>
+                <path d="M18 6L6 18M6 6l12 12" />
+              </Icon>
             </button>
           </div>
 
@@ -363,11 +392,7 @@ export default function SidebarNav({
                         : "hover:bg-hover/60"
                     }`}
                   >
-                    <span
-                      className="mt-0.5 size-8 shrink-0 rounded-full"
-                      style={{ backgroundColor: color }}
-                      aria-hidden
-                    />
+                    <BotMark color={color} size={30} className="mt-0.5" />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[13.5px] font-semibold text-ink">
                         {t.label}

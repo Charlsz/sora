@@ -162,4 +162,17 @@ function migrate(db: Database): void {
      ON CONFLICT(key) DO UPDATE SET value = excluded.value
      WHERE CAST(meta.value AS INTEGER) < 4`,
   ).run();
+
+  // v5: tintable bot mark color
+  const agentCols = db
+    .query(`PRAGMA table_info(agents)`)
+    .all() as Array<{ name: string }>;
+  if (!agentCols.some((c) => c.name === "accent_color")) {
+    db.exec(`ALTER TABLE agents ADD COLUMN accent_color TEXT`);
+  }
+  db.query(
+    `INSERT INTO meta (key, value) VALUES ('schema_version', '5')
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value
+     WHERE CAST(meta.value AS INTEGER) < 5`,
+  ).run();
 }

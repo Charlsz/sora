@@ -62,6 +62,8 @@ export class AgentStore {
     const capabilities =
       input.capabilities ?? inferCapabilities(name, input.description ?? "");
 
+    const accentColor = normalizeAccentColor(input.accentColor);
+
     const agent: Agent = {
       id,
       slug,
@@ -71,6 +73,7 @@ export class AgentStore {
         input.instructions ??
         defaultInstructions(name, input.description ?? ""),
       model: input.model ?? defaultModel,
+      accentColor,
       tools,
       skills,
       capabilities,
@@ -83,9 +86,9 @@ export class AgentStore {
     this.db
       .query(
         `INSERT INTO agents (
-          id, slug, name, description, instructions, model,
+          id, slug, name, description, instructions, model, accent_color,
           tools_json, skills_json, capabilities_json, status, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         agent.id,
@@ -94,6 +97,7 @@ export class AgentStore {
         agent.description,
         agent.instructions,
         agent.model,
+        agent.accentColor,
         JSON.stringify(agent.tools),
         JSON.stringify(agent.skills),
         JSON.stringify(agent.capabilities),
@@ -116,6 +120,7 @@ export class AgentStore {
           description: agent.description,
           instructions: agent.instructions,
           model: agent.model,
+          accentColor: agent.accentColor,
           tools: agent.tools,
           skills: agent.skills,
           capabilities: agent.capabilities,
@@ -187,7 +192,10 @@ export class AgentStore {
   update(
     slug: string,
     patch: Partial<
-      Pick<Agent, "name" | "description" | "instructions" | "model">
+      Pick<
+        Agent,
+        "name" | "description" | "instructions" | "model" | "accentColor"
+      >
     >,
   ): Agent {
     const agent = this.requireBySlug(slug);
@@ -203,18 +211,23 @@ export class AgentStore {
       description: patch.description ?? agent.description,
       instructions: patch.instructions ?? agent.instructions,
       model: patch.model ?? agent.model,
+      accentColor:
+        patch.accentColor !== undefined
+          ? normalizeAccentColor(patch.accentColor)
+          : agent.accentColor,
       updatedAt: new Date().toISOString(),
     };
 
     this.db
       .query(
-        `UPDATE agents SET name = ?, description = ?, instructions = ?, model = ?, updated_at = ? WHERE id = ?`,
+        `UPDATE agents SET name = ?, description = ?, instructions = ?, model = ?, accent_color = ?, updated_at = ? WHERE id = ?`,
       )
       .run(
         updated.name,
         updated.description,
         updated.instructions,
         updated.model,
+        updated.accentColor,
         updated.updatedAt,
         updated.id,
       );
@@ -230,6 +243,7 @@ export class AgentStore {
           description: updated.description,
           instructions: updated.instructions,
           model: updated.model,
+          accentColor: updated.accentColor,
           tools: updated.tools,
           skills: updated.skills,
           capabilities: updated.capabilities,
@@ -293,7 +307,32 @@ function inferCapabilities(name: string, description: string): string[] {
   return [...caps];
 }
 
+function normalizeAccentColor(
+  value: string | null | undefined,
+): string | null {
+  if (value == null) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw.toUpperCase();
+  if (/^#[0-9a-fA-F]{3}$/.test(raw)) {
+    const a = raw[1]!;
+    const b = raw[2]!;
+    const c = raw[3]!;
+    return `#${a}${a}${b}${b}${c}${c}`.toUpperCase();
+  }
+  throw new Error("accentColor must be a hex color like #8B6BC9");
+}
+
 function rowToAgent(row: Record<string, unknown>): Agent {
+  const accentRaw = row.accent_color;
+  let accentColor: string | null = null;
+  if (accentRaw != null && String(accentRaw).trim()) {
+    try {
+      accentColor = normalizeAccentColor(String(accentRaw));
+    } catch {
+      accentColor = null;
+    }
+  }
   return {
     id: String(row.id),
     slug: String(row.slug),
@@ -301,6 +340,7 @@ function rowToAgent(row: Record<string, unknown>): Agent {
     description: String(row.description ?? ""),
     instructions: String(row.instructions ?? ""),
     model: String(row.model),
+    accentColor,
     tools: JSON.parse(String(row.tools_json || "[]")),
     skills: JSON.parse(String(row.skills_json || "[]")),
     capabilities: JSON.parse(String(row.capabilities_json || "[]")),

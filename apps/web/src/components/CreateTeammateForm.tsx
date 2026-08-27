@@ -1,6 +1,10 @@
 import { useState } from "react";
 import { soraApi, type Agent } from "../api";
 import { isReservedTeammateName, pickTeammateName } from "../teammateNames";
+import BotMark, {
+  BOT_ACCENT_PRESETS,
+  normalizeAccentColor,
+} from "./BotMark";
 
 type BdBot = {
   slug: string;
@@ -49,6 +53,9 @@ export default function CreateTeammateForm({
 }) {
   const [name, setName] = useState(() => pickTeammateName(existingNames));
   const [paste, setPaste] = useState("");
+  const [accentColor, setAccentColor] = useState<string>(
+    () => BOT_ACCENT_PRESETS[Math.floor(Math.random() * BOT_ACCENT_PRESETS.length)]!,
+  );
   const [integrations, setIntegrations] = useState<string[]>([]);
   const [query, setQuery] = useState("");
   const [bots, setBots] = useState<BdBot[]>([]);
@@ -109,9 +116,11 @@ export default function CreateTeammateForm({
     }
     setBusy("start");
     try {
+      const color = normalizeAccentColor(accentColor, BOT_ACCENT_PRESETS[0]!);
       const agent = await soraApi.createAgent({
         name: teammateName,
         instructions: SETUP_SHELL(teammateName, integrations),
+        accentColor: color,
       });
       if (defaultModel) {
         await soraApi.updateAgent(agent.slug, { model: defaultModel });
@@ -122,6 +131,11 @@ export default function CreateTeammateForm({
       });
       setPaste("");
       setIntegrations([]);
+      setAccentColor(
+        BOT_ACCENT_PRESETS[
+          Math.floor(Math.random() * BOT_ACCENT_PRESETS.length)
+        ]!,
+      );
       setName(pickTeammateName([...existingNames, agent.name]));
     } catch (err) {
       onError(err instanceof Error ? err.message : String(err));
@@ -141,6 +155,43 @@ export default function CreateTeammateForm({
           className="h-9 rounded-control border border-line bg-field px-3 text-[13px] text-ink outline-none focus:border-line-strong"
         />
       </label>
+
+      <div className="flex flex-col gap-1.5">
+        <span className="text-[12.5px] font-medium text-ink">Mark color</span>
+        <div className="flex items-center gap-3">
+          <BotMark color={accentColor} size={36} />
+          <div className="flex flex-wrap gap-1.5">
+            {BOT_ACCENT_PRESETS.map((c) => (
+              <button
+                key={c}
+                type="button"
+                aria-label={`Color ${c}`}
+                onClick={() => setAccentColor(c)}
+                className={`size-6 rounded-[6px] border ${
+                  accentColor.toUpperCase() === c
+                    ? "border-ink ring-1 ring-ink"
+                    : "border-line"
+                }`}
+                style={{ backgroundColor: c }}
+              />
+            ))}
+            <label className="relative size-6 overflow-hidden rounded-[6px] border border-line bg-field">
+              <span className="sr-only">Custom color</span>
+              <input
+                type="color"
+                value={normalizeAccentColor(accentColor, BOT_ACCENT_PRESETS[0]!)}
+                onChange={(e) => setAccentColor(e.target.value.toUpperCase())}
+                className="absolute inset-0 cursor-pointer opacity-0"
+              />
+              <span
+                className="block size-full"
+                style={{ backgroundColor: accentColor }}
+                aria-hidden
+              />
+            </label>
+          </div>
+        </div>
+      </div>
 
       <label className="flex flex-col gap-1.5">
         <span className="text-[12.5px] font-medium text-ink">Prompt</span>
